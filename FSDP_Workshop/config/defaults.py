@@ -37,11 +37,11 @@ class train_config:
 
 
     # sharding policy
-    sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
+    sharding_strategy: ShardingStrategy = ShardingStrategy.SHARD_GRAD_OP  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
     print_sharding_plan: bool = True
 
     # backward prefetch
-    backward_prefetch = BackwardPrefetch.BACKWARD_POST  #BACKWARD_PRE, BACKWARD_POST
+    backward_prefetch = BackwardPrefetch.BACKWARD_PRE  #BACKWARD_PRE, BACKWARD_POST
 
     # dataloaders
     num_workers_dataloader: int = 0
