@@ -395,6 +395,14 @@ def fsdp_main(args):
     if rank == 0:
         print(f"Sharding strategy = {model_sharding_strategy}")
 
+    # --- backward prefetch
+    model_backward_prefetch = (
+        cfg.backward_prefetch or None
+    )  # use config, but default to None (i.e. default) if not available
+    if rank == 0:
+        print(f"Backward prefetch = {model_backward_prefetch}")
+
+
     
     # Main FSDP call - this inits FSDP with our model and FSDP will create the sharding plan
     # and stream the shards to each GPU.
@@ -405,6 +413,7 @@ def fsdp_main(args):
         auto_wrap_policy=wrapping_policy,
         mixed_precision=mp_policy,
         sharding_strategy=model_sharding_strategy,
+        backward_prefetch = model_backward_prefetch,
         device_id=torch.cuda.current_device(),  # streaming init
     )
 

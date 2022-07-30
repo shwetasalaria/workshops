@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from dataclasses import dataclass
-from torch.distributed.fsdp import ShardingStrategy
+from torch.distributed.fsdp import ShardingStrategy, BackwardPrefetch
 
 
 @dataclass
@@ -18,7 +18,7 @@ class train_config:
     
     
     # model
-    model_name = "google/t5-v1_1-small"  # << - adjust model size here
+    model_name = "google/t5-v1_1-xl"  # << - adjust model size here
     
     # available models
     # google/t5-v1_1-small  # 60 M
@@ -37,8 +37,11 @@ class train_config:
 
 
     # sharding policy
-    sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
-    print_sharding_plan: bool = False
+    sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
+    print_sharding_plan: bool = True
+
+    # backward prefetch
+    backward_prefetch = BackwardPrefetch.BACKWARD_POST  #BACKWARD_PRE, BACKWARD_POST
 
     # dataloaders
     num_workers_dataloader: int = 0
@@ -56,7 +59,7 @@ class train_config:
     dataset_test = "datasets_grammar/grammar_validation.csv"
 
     # training
-    batch_size: int = 24
+    batch_size: int = 96
     num_epochs: int = 2
 
     # validation
