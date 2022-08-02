@@ -37,7 +37,7 @@ class train_config:
 
 
     # sharding policy
-    sharding_strategy: ShardingStrategy = ShardingStrategy.SHARD_GRAD_OP  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
+    sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
     print_sharding_plan: bool = True
 
     # backward prefetch
@@ -60,7 +60,7 @@ class train_config:
     dataset_test = "datasets_grammar/grammar_validation.csv"
 
     # training
-    batch_size: int = 128
+    batch_size: int = 118
     num_epochs: int = 2
 
     # validation
