@@ -55,7 +55,7 @@ class train_config:
     FSDP_activation_checkpointing: bool = True
 
     # datasets
-    dataset_train = "datasets_grammar/grammar_train.csv" # gtrain_150K.csv
+    dataset_train = "datasets_grammar/gtrain_150K.csv" # gtrain_150K.csv
     dataset_test = "datasets_grammar/grammar_validation.csv"
 
     # training
