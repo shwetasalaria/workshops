@@ -55,11 +55,12 @@ class train_config:
     FSDP_activation_checkpointing: bool = True
 
     # datasets
-    dataset_train = "/workspace/data/lchu/gtrain_10M.csv" # datasets_grammar/gtrain_150K.csv
+    dataset_train = "datasets_grammar/gtrain_150K.csv"
+    # dataset_train = "/workspace/data/lchu/gtrain_10M.csv"
     dataset_test = "datasets_grammar/grammar_validation.csv"
 
     # training
-    batch_size: int = 96
+    batch_size: int = 128
     num_epochs: int = 2
 
     # validation
