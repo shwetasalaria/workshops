@@ -41,7 +41,7 @@ class train_config:
     print_sharding_plan: bool = True
 
     # backward prefetch
-    backward_prefetch = BackwardPrefetch.BACKWARD_POST  #BACKWARD_PRE, BACKWARD_POST
+    backward_prefetch = BackwardPrefetch.BACKWARD_PRE  #BACKWARD_PRE, BACKWARD_POST
 
     # dataloaders
     num_workers_dataloader: int = 0
