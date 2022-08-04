@@ -43,7 +43,7 @@ class train_config:
         2  # number of 'best' checkpoints to save based on val loss
     )
 
-    
+
     # sharding policy
     # sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
     sharding_strategy = (os.getenv("SHARDING_STRATEGY") or "full").lower()
@@ -85,7 +85,7 @@ class train_config:
     dataset_test = "datasets_grammar/grammar_validation.csv"
 
     # training
-    batch_size: int = 100
+    batch_size: int = int(os.getenv("BATCH_SIZE") or "100")
     num_epochs: int = 2
 
     # validation
