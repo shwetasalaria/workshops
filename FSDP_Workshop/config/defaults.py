@@ -3,6 +3,7 @@
 #
 # This source code is licensed under the Apache-style license found in the
 # LICENSE file in the root directory of this source tree.
+import os
 
 from dataclasses import dataclass
 from torch.distributed.fsdp import ShardingStrategy, BackwardPrefetch
@@ -37,11 +38,28 @@ class train_config:
 
 
     # sharding policy
-    sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
+    # sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
+    sharding_strategy = os.getenv("SHARDING_STRATEGY") or "full"
+    if sharding_strategy.lower() == "full":
+        sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
+    elif sharding_strategy.lower() == "grad":
+        sharding_strategy: ShardingStrategy = ShardingStrategy.SHARD_GRAD_OP
+    elif sharding_strategy.lower() == "no":
+        sharding_strategy: ShardingStrategy = ShardingStrategy.NO_SHARD
+    else:
+        sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
     print_sharding_plan: bool = True
 
     # backward prefetch
-    backward_prefetch = BackwardPrefetch.BACKWARD_PRE  #BACKWARD_PRE, BACKWARD_POST
+    # backward_prefetch = BackwardPrefetch.BACKWARD_PRE  #BACKWARD_PRE, BACKWARD_POST
+    backward_prefetch = os.getenv("BACKWARD_PREFETCH") or "pre"
+    if backward_prefetch.lower() == "pre":
+        backward_prefetch = BackwardPrefetch.BACKWARD_PRE
+    elif backward_prefetch.lower() == "post":
+        backward_prefetch = BackwardPrefetch.BACKWARD_POST
+    else:
+        backward_prefetch = BackwardPrefetch.BACKWARD_PRE
+    
 
     # dataloaders
     num_workers_dataloader: int = 0
