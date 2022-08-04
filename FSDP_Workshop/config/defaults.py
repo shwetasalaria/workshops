@@ -19,7 +19,14 @@ class train_config:
     
     
     # model
-    model_name = "google/t5-v1_1-xl"  # << - adjust model size here
+    # model_name = "google/t5-v1_1-xl"  # << - adjust model size here
+    model_name = (os.getenv("MODEL_NAME") or "3b").lower()
+    if model_name == "3b":
+        model_name = "google/t5-v1_1-xl"
+    elif model_name == "11b":
+        model_name = "google/t5-v1_1-xxl"
+    else:
+        model_name = "google/t5-v1_1-xl"
     
     # available models
     # google/t5-v1_1-small  # 60 M
@@ -36,15 +43,15 @@ class train_config:
         2  # number of 'best' checkpoints to save based on val loss
     )
 
-
+    
     # sharding policy
     # sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
-    sharding_strategy = os.getenv("SHARDING_STRATEGY") or "full"
-    if sharding_strategy.lower() == "full":
+    sharding_strategy = (os.getenv("SHARDING_STRATEGY") or "full").lower()
+    if sharding_strategy == "full":
         sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
-    elif sharding_strategy.lower() == "grad":
+    elif sharding_strategy == "grad":
         sharding_strategy: ShardingStrategy = ShardingStrategy.SHARD_GRAD_OP
-    elif sharding_strategy.lower() == "no":
+    elif sharding_strategy == "no":
         sharding_strategy: ShardingStrategy = ShardingStrategy.NO_SHARD
     else:
         sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
@@ -52,10 +59,10 @@ class train_config:
 
     # backward prefetch
     # backward_prefetch = BackwardPrefetch.BACKWARD_PRE  #BACKWARD_PRE, BACKWARD_POST
-    backward_prefetch = os.getenv("BACKWARD_PREFETCH") or "pre"
-    if backward_prefetch.lower() == "pre":
+    backward_prefetch = (os.getenv("BACKWARD_PREFETCH") or "pre").lower()
+    if backward_prefetch == "pre":
         backward_prefetch = BackwardPrefetch.BACKWARD_PRE
-    elif backward_prefetch.lower() == "post":
+    elif backward_prefetch == "post":
         backward_prefetch = BackwardPrefetch.BACKWARD_POST
     else:
         backward_prefetch = BackwardPrefetch.BACKWARD_PRE
