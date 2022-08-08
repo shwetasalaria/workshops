@@ -20,7 +20,7 @@ class train_config:
     
     # model
     # model_name = "google/t5-v1_1-xl"  # << - adjust model size here
-    model_name = (os.getenv("MODEL_NAME") or "3b").lower()
+    model_name = os.getenv("MODEL_NAME", "3b").lower()
     if model_name == "3b":
         model_name = "google/t5-v1_1-xl"
     elif model_name == "11b":
@@ -46,7 +46,7 @@ class train_config:
 
     # sharding policy
     # sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
-    sharding_strategy = (os.getenv("SHARDING_STRATEGY") or "full").lower()
+    sharding_strategy = os.getenv("SHARDING_STRATEGY", "full").lower()
     if sharding_strategy == "full":
         sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
     elif sharding_strategy == "grad":
@@ -57,9 +57,17 @@ class train_config:
         sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
     print_sharding_plan: bool = True
 
+
+    # cpu offload
+    cpu_offload = os.getenv("CPU_OFFLOAD", "false").lower()
+    if cpu_offload == "true":
+        cpu_offload = True
+    else:
+        cpu_offload = False
+
     # backward prefetch
     # backward_prefetch = BackwardPrefetch.BACKWARD_PRE  #BACKWARD_PRE, BACKWARD_POST
-    backward_prefetch = (os.getenv("BACKWARD_PREFETCH") or "pre").lower()
+    backward_prefetch = os.getenv("BACKWARD_PREFETCH", "pre").lower()
     if backward_prefetch == "pre":
         backward_prefetch = BackwardPrefetch.BACKWARD_PRE
     elif backward_prefetch == "post":
@@ -85,7 +93,7 @@ class train_config:
     dataset_test = "datasets_grammar/grammar_validation.csv"
 
     # training
-    batch_size: int = int(os.getenv("BATCH_SIZE") or "100")
+    batch_size: int = int(os.getenv("BATCH_SIZE", "100"))
     num_epochs: int = 2
 
     # validation
