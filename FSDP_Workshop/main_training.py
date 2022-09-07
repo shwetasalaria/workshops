@@ -420,7 +420,7 @@ def fsdp_main(args):
         cpu_offload=CPUOffload(cpu_offload),
         device_id=torch.cuda.current_device() if not cpu_offload else None,  # streaming init
         limit_all_gathers=True,
-        inflight_max=2
+        inflight_max=4
     )
 
     # if fsdp activation checkpointing:
