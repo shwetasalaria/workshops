@@ -281,21 +281,21 @@ def validation(model, local_rank, rank, world_size, test_loader):
 
 def fsdp_main(args):
 
-    # https://github.com/pytorch/pytorch/issues/60158#issuecomment-866294291
-    with torch.profiler.profile(
-        activities=[
-            torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.CUDA,
-        ],
-        schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(
-            "profile_traces"
-        ),
-        profile_memory=True,
-        with_stack=False,
-        record_shapes=True,
-    ) as torch_profiler:
-        pass
+    # # https://github.com/pytorch/pytorch/issues/60158#issuecomment-866294291
+    # with torch.profiler.profile(
+    #     activities=[
+    #         torch.profiler.ProfilerActivity.CPU,
+    #         torch.profiler.ProfilerActivity.CUDA,
+    #     ],
+    #     schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
+    #     on_trace_ready=torch.profiler.tensorboard_trace_handler(
+    #         "profile_traces"
+    #     ),
+    #     profile_memory=True,
+    #     with_stack=False,
+    #     record_shapes=True,
+    # ) as torch_profiler:
+    #     pass
 
     """main process, run within each individual GPU process"""
 
@@ -516,138 +516,138 @@ def fsdp_main(args):
     # you can run profiling by un-commenting the below section.  Note that you will likely want to just profile
     # for a small set and smaller model (logs get very big, very fast).
     torch_profiler = None
-    with torch.profiler.profile(
-        activities=[
-            torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.CUDA,
-        ],
-        schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(
-            "profile_traces"
-        ),
-        profile_memory=True,
-        with_stack=False,
-        record_shapes=True,
-    ) as torch_profiler:
+    # torch_profiler = torch.profiler.profile(
+    #     activities=[
+    #         torch.profiler.ProfilerActivity.CPU,
+    #         torch.profiler.ProfilerActivity.CUDA,
+    #     ],
+    #     schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
+    #     on_trace_ready=torch.profiler.tensorboard_trace_handler(
+    #         "profile_traces"
+    #     ),
+    #     profile_memory=True,
+    #     with_stack=False,
+    #     record_shapes=True,
+    # )
 
 
-        if rank == 0 and cfg.track_memory:
-            mem_alloc_tracker = []
-            
+    if rank == 0 and cfg.track_memory:
+        mem_alloc_tracker = []
+        
 
-        # -- Start Training -----
+    # -- Start Training -----
+    if rank==0:
+        memmax.start()
+
+    for epoch in range(1, epochs + 1):
+        if rank == 0:
+            print(f"\n--> Starting Epoch {epoch}")
+
+            t0 = time.time()
+        train_accuracy = train(
+            args,
+            model,
+            local_rank,
+            rank,
+            world_size,
+            train_loader,
+            optimizer,
+            epoch,
+            sampler=sampler1,
+            profiler=torch_profiler,
+            scaler=scaler,
+        )
         if rank==0:
-            memmax.start()
+            memmax.update()
 
-        for epoch in range(1, epochs + 1):
-            if rank == 0:
-                print(f"\n--> Starting Epoch {epoch}")
+        if cfg.run_validation:
+            curr_val_loss = validation(model, local_rank, rank, world_size, test_loader)
 
-                t0 = time.time()
-            train_accuracy = train(
-                args,
-                model,
-                local_rank,
-                rank,
-                world_size,
-                train_loader,
-                optimizer,
-                epoch,
-                sampler=sampler1,
-                profiler=torch_profiler,
-                scaler=scaler,
-            )
-            if rank==0:
-                memmax.update()
+        scheduler.step()
+
+        if rank == 0:
+            print(f"--> epoch {epoch} completed...entering save and stats zone")
+
+            dur.append(time.time() - t0)
+            train_acc_tracking.append(train_accuracy.item())
 
             if cfg.run_validation:
-                curr_val_loss = validation(model, local_rank, rank, world_size, test_loader)
-
-            scheduler.step()
-
-            if rank == 0:
-                print(f"--> epoch {epoch} completed...entering save and stats zone")
-
-                dur.append(time.time() - t0)
-                train_acc_tracking.append(train_accuracy.item())
-
-                if cfg.run_validation:
-                    val_acc_tracking.append(curr_val_loss.item())
-
-                if cfg.track_memory:
-                    mem_alloc_tracker.append(
-                        format_metrics_to_gb(torch.cuda.memory_allocated())
-                    )
-
-            # save this epochs checkpoint if val loss is current best
-            if cfg.save_model and curr_val_loss < best_val_loss:
-                # update curr best val accuracy
-
-                # save
-                if rank == 0:
-                    print(f"--> entering save model state...")
-                save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-                with FSDP.state_dict_type(
-                    model, StateDictType.FULL_STATE_DICT, save_policy
-                ):
-                    cpu_state = model.state_dict()
-                # states = model.state_dict()
-                print(f"saving process: rank {rank}  done w state_dict")
-                # dist.barrier()
-                # print(f"rank {rank}  done w 2nd barrier")
-
-                if rank == 0:
-                    print(f"--> saving model ...")
-                    currEpoch = (
-                        "-" + str(epoch) + "-" + str(round(curr_val_loss.item(), 4)) + ".pt"
-                    )
-                    save_name = file_save_name + "-" + time_of_run + "-" + currEpoch
-
-                    torch.save(cpu_state, save_name)
-
-                    print(f"--> saved {save_name} to disk")
-                    dq.append(save_name)
-                    # only keep a rolling number of model files to avoid excessive disk space use
-                    model_checkpoints.prune_checkpoints(rank, dq, cfg)
-                    
-
-            # announce new val loss record:
-            if rank == 0 and curr_val_loss < best_val_loss:
-
-                best_val_loss = curr_val_loss
-                print(f"-->>>> New Val Loss Record: {best_val_loss}")
-
-        # init_end_event.record()
-        if rank == 0:
-            
-            total_training_time = time.time() - training_start_time
-            print(f"Total training time = {total_training_time:.2f}")
-            print("Times per epoch:")
-            for i, val in enumerate(dur):
-                print(f"epoch {i}, time {val:.2f}")
-            print()
-
-            # training is done...show some training stats for memory use.
-            # memory
-            memmax.stop()
+                val_acc_tracking.append(curr_val_loss.item())
 
             if cfg.track_memory:
-                print(f"total memory allocated: {mem_alloc_tracker}")
-
-            print(f"Training accuracy: {train_acc_tracking}")
-            if cfg.run_validation:
-                print(f"Validation accuracy: {val_acc_tracking}") 
-                print(f"\n Best Val accuracy: {best_val_loss}")
-
-            # memory summary
-            if cfg.memory_report and rank == 0:
-                print(
-                    f"CUDA Memory Summary After Last training:\n {torch.cuda.memory_summary()}"
+                mem_alloc_tracker.append(
+                    format_metrics_to_gb(torch.cuda.memory_allocated())
                 )
-            
-        # all done, set barrier to ensure all GPU's complete, and then cleanup 
-        dist.barrier()
-        cleanup()
+
+        # save this epochs checkpoint if val loss is current best
+        if cfg.save_model and curr_val_loss < best_val_loss:
+            # update curr best val accuracy
+
+            # save
+            if rank == 0:
+                print(f"--> entering save model state...")
+            save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+            with FSDP.state_dict_type(
+                model, StateDictType.FULL_STATE_DICT, save_policy
+            ):
+                cpu_state = model.state_dict()
+            # states = model.state_dict()
+            print(f"saving process: rank {rank}  done w state_dict")
+            # dist.barrier()
+            # print(f"rank {rank}  done w 2nd barrier")
+
+            if rank == 0:
+                print(f"--> saving model ...")
+                currEpoch = (
+                    "-" + str(epoch) + "-" + str(round(curr_val_loss.item(), 4)) + ".pt"
+                )
+                save_name = file_save_name + "-" + time_of_run + "-" + currEpoch
+
+                torch.save(cpu_state, save_name)
+
+                print(f"--> saved {save_name} to disk")
+                dq.append(save_name)
+                # only keep a rolling number of model files to avoid excessive disk space use
+                model_checkpoints.prune_checkpoints(rank, dq, cfg)
+                
+
+        # announce new val loss record:
+        if rank == 0 and curr_val_loss < best_val_loss:
+
+            best_val_loss = curr_val_loss
+            print(f"-->>>> New Val Loss Record: {best_val_loss}")
+
+    # init_end_event.record()
+    if rank == 0:
+        
+        total_training_time = time.time() - training_start_time
+        print(f"Total training time = {total_training_time:.2f}")
+        print("Times per epoch:")
+        for i, val in enumerate(dur):
+            print(f"epoch {i}, time {val:.2f}")
+        print()
+
+        # training is done...show some training stats for memory use.
+        # memory
+        memmax.stop()
+
+        if cfg.track_memory:
+            print(f"total memory allocated: {mem_alloc_tracker}")
+
+        print(f"Training accuracy: {train_acc_tracking}")
+        if cfg.run_validation:
+            print(f"Validation accuracy: {val_acc_tracking}") 
+            print(f"\n Best Val accuracy: {best_val_loss}")
+
+        # memory summary
+        if cfg.memory_report and rank == 0:
+            print(
+                f"CUDA Memory Summary After Last training:\n {torch.cuda.memory_summary()}"
+            )
+        
+    # all done, set barrier to ensure all GPU's complete, and then cleanup 
+    dist.barrier()
+    cleanup()
 
 
 # ------------------ Main functions above ------------
