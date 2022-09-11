@@ -498,7 +498,7 @@ def fsdp_main(args):
 
     # you can run profiling by un-commenting the below section.  Note that you will likely want to just profile
     # for a small set and smaller model (logs get very big, very fast).
-    # torch_profiler = None
+    torch_profiler = None
     # with torch.profiler.profile(
     #     activities=[
     #         torch.profiler.ProfilerActivity.CPU,
