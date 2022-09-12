@@ -298,6 +298,7 @@ def fsdp_main(args):
     #     pass
 
     """main process, run within each individual GPU process"""
+    print(torch.cuda.nccl.version())
 
     cfg = config.train_config()  # loads from defaults
 
