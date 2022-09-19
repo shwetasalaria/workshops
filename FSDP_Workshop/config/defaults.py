@@ -89,7 +89,7 @@ class train_config:
 
     # datasets
     # dataset_train = "datasets_grammar/gtrain_150K.csv"
-    dataset_train = "/workspace/data/lchu/gtrain_150K.csv"  # /workspace/data/lchu/gtrain_10M.csv, /workspace/data/lchu/gtrain_150K.csv
+    dataset_train = "/workspace/data/lchu/gtrain_1M.csv"  # /workspace/data/lchu/gtrain_10M.csv, /workspace/data/lchu/gtrain_150K.csv
     dataset_test = "datasets_grammar/grammar_validation.csv"
 
     # training
