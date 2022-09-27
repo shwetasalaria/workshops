@@ -38,7 +38,7 @@ class train_config:
     tokenizer = "t5-large"   # no need to adjust, tokenizer works for all model sizes
 
     # save models
-    save_model: bool = True
+    save_model: bool = False
     checkpoint_max_save_count: int = (
         2  # number of 'best' checkpoints to save based on val loss
     )
