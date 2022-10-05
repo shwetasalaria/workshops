@@ -520,7 +520,7 @@ def fsdp_main(args):
             torch.profiler.ProfilerActivity.CPU,
             torch.profiler.ProfilerActivity.CUDA,
         ],
-        schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
+        schedule=torch.profiler.schedule(wait=5, warmup=5, active=3, repeat=1),
         on_trace_ready=torch.profiler.tensorboard_trace_handler(
             "profile_traces"
         ),
