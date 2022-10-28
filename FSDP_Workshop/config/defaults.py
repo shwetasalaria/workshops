@@ -94,7 +94,7 @@ class train_config:
 
     # training
     batch_size: int = int(os.getenv("BATCH_SIZE", "100"))
-    num_epochs: int = 1
+    num_epochs: int = 2
 
     # validation
     run_validation: bool = True
