@@ -20,7 +20,7 @@ class train_config:
     
     # model
     # model_name = "google/t5-v1_1-xl"  # << - adjust model size here
-    model_name = os.getenv("MODEL_NAME", "3b").lower()
+    model_name = os.getenv("MODEL_NAME", "11b").lower()
     if model_name == "3b":
         model_name = "google/t5-v1_1-xl"
     elif model_name == "11b":
@@ -55,7 +55,7 @@ class train_config:
         sharding_strategy: ShardingStrategy = ShardingStrategy.NO_SHARD
     else:
         sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
-    print_sharding_plan: bool = True
+    print_sharding_plan: bool = False
 
 
     # cpu offload
@@ -93,7 +93,7 @@ class train_config:
     dataset_test = "datasets_grammar/grammar_validation.csv"
 
     # training
-    batch_size: int = int(os.getenv("BATCH_SIZE", "100"))
+    batch_size: int = int(os.getenv("BATCH_SIZE", "50"))
     num_epochs: int = 2
 
     # validation
