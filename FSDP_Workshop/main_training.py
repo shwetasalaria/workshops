@@ -229,7 +229,7 @@ def train(
         if rank == 0:
             inner_pbar.update(1)
             import numpy as np
-            np.save('/workspace/opt.npy', optimizer.state_dict()) 
+            torch.save(optimizer.state_dict(), '/workspace/opt') 
             break
         if profiler:
             profiler.step()
