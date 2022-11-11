@@ -262,7 +262,7 @@ def validation(model, local_rank, rank, world_size, test_loader):
                 labels=batch["target_ids"],
             )
             ddp_loss[0] += output["loss"].item()  # sum up batch loss
-            ddp_loss[1] += len(batch)
+            ddp_loss[1] += 1
 
             if rank == 0:
                 inner_pbar.update(1)
