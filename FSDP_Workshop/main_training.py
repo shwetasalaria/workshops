@@ -224,7 +224,7 @@ def train(
             optimizer.step()
 
         ddp_loss[0] += loss.item()
-        ddp_loss[1] += len(batch)
+        ddp_loss[1] += 1
 
         if rank == 0:
             inner_pbar.update(1)
