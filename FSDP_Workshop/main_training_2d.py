@@ -470,8 +470,8 @@ def fsdp_main(args):
             module=encoder_block,
             device_mesh=twod_mesh,
             parallelize_plan={
-                "self_attention": PairwiseParallel(),
-                "mlp_block": PairwiseParallel(),
+                "layer.0.SelfAttention": PairwiseParallel(),
+                "layer.1.DenseReluDense": PairwiseParallel(),
             },
             tp_mesh_dim=1,
         )
@@ -481,8 +481,9 @@ def fsdp_main(args):
             module=decoder_block,
             device_mesh=twod_mesh,
             parallelize_plan={
-                "self_attention": PairwiseParallel(),
-                "mlp_block": PairwiseParallel(),
+                "layer.0.SelfAttention": PairwiseParallel(),
+                "layer.1.EncDecAttention": PairwiseParallel(),
+                "layer.2.DenseReluDense": PairwiseParallel(),
             },
             tp_mesh_dim=1,
         )
