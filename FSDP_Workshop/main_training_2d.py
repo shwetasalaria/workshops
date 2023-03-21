@@ -495,15 +495,15 @@ def fsdp_main(args):
     model.to(device)
     model = FSDP(model, process_group=fsdp_pg)
 
-    # if fsdp activation checkpointing:
-    if cfg.FSDP_activation_checkpointing:
-        import activation_checkpointing as ac
-        ac.apply_fsdp_checkpointing(model)
-
-        # confirm we are not double checkpointing
-        if cfg.HF_activation_checkpointing:
-            print(f"cannot run with both HF and FSDP checkpointing.  Please check config..aborting")
-            return
+    # # if fsdp activation checkpointing:
+    # if cfg.FSDP_activation_checkpointing:
+    #     import activation_checkpointing as ac
+    #     ac.apply_fsdp_checkpointing(model)
+    #
+    #     # confirm we are not double checkpointing
+    #     if cfg.HF_activation_checkpointing:
+    #         print(f"cannot run with both HF and FSDP checkpointing.  Please check config..aborting")
+    #         return
 
     
     #optional - you can print the sharding plan to see how FSDP has structured the layout.
