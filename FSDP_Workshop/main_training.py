@@ -33,6 +33,8 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 
+from torch.utils.flop_counter import FlopCounterMode
+
 # main FSDP imports
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
@@ -203,7 +205,7 @@ def train(
             range(len(train_loader)), colour="blue", desc="Training Epoch"
         )
     for batch in train_loader:
-        flop_counter = torch.utils.flop_counter.FlopCounterMode(model)
+        flop_counter = FlopCounterMode(model)
         for key in batch.keys():
             batch[key] = batch[key].to(local_rank)
 
