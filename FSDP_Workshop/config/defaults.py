@@ -35,7 +35,7 @@ class train_config:
     # google/t5-v1_1-xl     # 3 Billion
     # google/t5-v1_1-xxl    # 11 Billion 
 
-    tokenizer = "t5-large"   # no need to adjust, tokenizer works for all model sizes
+    tokenizer = "google/t5-v1_1-xl"   # no need to adjust, tokenizer works for all model sizes
 
     # save models
     save_model: bool = False
