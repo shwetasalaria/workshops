@@ -206,7 +206,7 @@ def train(
         )
     for batch_idx, batch in enumerate(train_loader, start=1):
         if epoch == 1 and batch_idx == 10:
-            flop_counter = FlopCounterMode(model)
+            flop_counter = FlopCounterMode()
             for key in batch.keys():
                 batch[key] = batch[key].to(local_rank)
 
