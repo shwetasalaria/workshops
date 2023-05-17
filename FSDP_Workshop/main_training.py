@@ -206,7 +206,7 @@ def train(
         )
     for batch_idx, batch in enumerate(train_loader, start=1):
         if epoch == 1 and batch_idx == 10:
-            flop_counter = FlopCounterMode()
+            flop_counter = FlopCounterMode(depth=999999)
             for key in batch.keys():
                 batch[key] = batch[key].to(local_rank)
 
@@ -217,7 +217,6 @@ def train(
                     attention_mask=batch["source_mask"],
                     labels=batch["target_ids"],
                 )
-            print(flop_counter.get_flop_counts())
         else:
             for key in batch.keys():
                 batch[key] = batch[key].to(local_rank)
