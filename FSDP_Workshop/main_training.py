@@ -267,28 +267,6 @@ def train(
                 else:
                     loss.backward()
                     optimizer.step()
-        elif epoch == 1 and batch_idx == 13 and rank == 0:
-            flop_counter = FlopCounterMode(depth=999999)
-            for key in batch.keys():
-                batch[key] = batch[key].to(local_rank)
-
-            optimizer.zero_grad()
-            with flop_counter:
-                output = model(
-                    input_ids=batch["source_ids"],
-                    attention_mask=batch["source_mask"],
-                    labels=batch["target_ids"],
-                )
-                loss = output["loss"]
-
-                if scaler:
-                    scaler.scale(loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()  # adjust scaling for next minibatch
-                else:
-                    loss.backward()
-
-            optimizer.step()
         else:
             for key in batch.keys():
                 batch[key] = batch[key].to(local_rank)
