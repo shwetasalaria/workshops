@@ -205,7 +205,7 @@ def train(
             range(len(train_loader)), colour="blue", desc="Training Epoch"
         )
     for batch_idx, batch in enumerate(train_loader, start=1):
-        if epoch == 1 and batch_idx == 10:
+        if epoch == 1 and batch_idx == 10 and rank == 0:
             flop_counter = FlopCounterMode(depth=999999)
             for key in batch.keys():
                 batch[key] = batch[key].to(local_rank)
@@ -217,6 +217,15 @@ def train(
                     attention_mask=batch["source_mask"],
                     labels=batch["target_ids"],
                 )
+                loss = output["loss"]
+
+                if scaler:
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()  # adjust scaling for next minibatch
+                else:
+                    loss.backward()
+                    optimizer.step()
         else:
             for key in batch.keys():
                 batch[key] = batch[key].to(local_rank)
@@ -227,16 +236,15 @@ def train(
                 attention_mask=batch["source_mask"],
                 labels=batch["target_ids"],
             )
+            loss = output["loss"]
 
-        loss = output["loss"]
-
-        if scaler:
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()  # adjust scaling for next minibatch
-        else:   
-            loss.backward()
-            optimizer.step()
+            if scaler:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()  # adjust scaling for next minibatch
+            else:
+                loss.backward()
+                optimizer.step()
 
         ddp_loss[0] += loss.item()
         ddp_loss[1] += 1
