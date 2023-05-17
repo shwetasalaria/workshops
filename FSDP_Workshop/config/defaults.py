@@ -20,7 +20,7 @@ class train_config:
     
     # model
     # model_name = "google/t5-v1_1-xl"  # << - adjust model size here
-    model_name = os.getenv("MODEL_NAME", "11b").lower()
+    model_name = os.getenv("MODEL_NAME", "3b").lower()
     if model_name == "3b":
         model_name = "google/t5-v1_1-xl"
     elif model_name == "11b":
