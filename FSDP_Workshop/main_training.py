@@ -203,15 +203,18 @@ def train(
             range(len(train_loader)), colour="blue", desc="Training Epoch"
         )
     for batch in train_loader:
+        flop_counter = torch.utils.flop_counter.FlopCounterMode(model)
         for key in batch.keys():
             batch[key] = batch[key].to(local_rank)
 
         optimizer.zero_grad()
-        output = model(
-            input_ids=batch["source_ids"],
-            attention_mask=batch["source_mask"],
-            labels=batch["target_ids"],
-        )
+        with flop_counter:
+            output = model(
+                input_ids=batch["source_ids"],
+                attention_mask=batch["source_mask"],
+                labels=batch["target_ids"],
+            )
+        print(flop_counter.get_flop_counts())
 
         loss = output["loss"]
 
