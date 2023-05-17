@@ -204,19 +204,30 @@ def train(
         inner_pbar = tqdm.tqdm(
             range(len(train_loader)), colour="blue", desc="Training Epoch"
         )
-    for batch in train_loader:
-        # flop_counter = FlopCounterMode(model)
-        for key in batch.keys():
-            batch[key] = batch[key].to(local_rank)
+    for batch_idx, batch in enumerate(train_loader, start=1):
+        if epoch == 1 and batch_idx == 1:
+            flop_counter = FlopCounterMode(model)
+            for key in batch.keys():
+                batch[key] = batch[key].to(local_rank)
 
-        optimizer.zero_grad()
-        # with flop_counter:
-        output = model(
-            input_ids=batch["source_ids"],
-            attention_mask=batch["source_mask"],
-            labels=batch["target_ids"],
-        )
-        # print(flop_counter.get_flop_counts())
+            optimizer.zero_grad()
+            with flop_counter:
+                output = model(
+                    input_ids=batch["source_ids"],
+                    attention_mask=batch["source_mask"],
+                    labels=batch["target_ids"],
+                )
+            print(flop_counter.get_flop_counts())
+        else:
+            for key in batch.keys():
+                batch[key] = batch[key].to(local_rank)
+
+            optimizer.zero_grad()
+            output = model(
+                input_ids=batch["source_ids"],
+                attention_mask=batch["source_mask"],
+                labels=batch["target_ids"],
+            )
 
         loss = output["loss"]
 
