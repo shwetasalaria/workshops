@@ -211,6 +211,12 @@ def train(
                 batch[key] = batch[key].to(local_rank)
 
             optimizer.zero_grad()
+            print(batch["source_ids"].dtype)
+            print(batch["source_mask"].dtype)
+            print(batch["target_ids"].dtype)
+            print(batch["source_ids"].nbytes)
+            print(batch["source_mask"].nbytes)
+            print(batch["target_ids"].nbytes)
             with flop_counter:
                 output = model(
                     input_ids=batch["source_ids"],
