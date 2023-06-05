@@ -33,7 +33,7 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 
-from torch.utils.flop_counter import FlopCounterMode
+# from torch.utils.flop_counter import FlopCounterMode
 
 # main FSDP imports
 from torch.distributed.fsdp import (
@@ -205,93 +205,87 @@ def train(
             range(len(train_loader)), colour="blue", desc="Training Epoch"
         )
     for batch_idx, batch in enumerate(train_loader, start=1):
-        if epoch == 1 and batch_idx == 10 and rank == 0:
-            flop_counter = FlopCounterMode(depth=999999)
-            for key in batch.keys():
-                batch[key] = batch[key].to(local_rank)
+        # if epoch == 1 and batch_idx == 10 and rank == 0:
+        #     flop_counter = FlopCounterMode(depth=999999)
+        #     for key in batch.keys():
+        #         batch[key] = batch[key].to(local_rank)
+        #
+        #     optimizer.zero_grad()
+        #     with flop_counter:
+        #         output = model(
+        #             input_ids=batch["source_ids"],
+        #             attention_mask=batch["source_mask"],
+        #             labels=batch["target_ids"],
+        #         )
+        #         loss = output["loss"]
+        #
+        #     if scaler:
+        #         scaler.scale(loss).backward()
+        #         scaler.step(optimizer)
+        #         scaler.update()  # adjust scaling for next minibatch
+        #     else:
+        #         loss.backward()
+        #         optimizer.step()
+        # elif epoch == 1 and batch_idx == 11 and rank == 0:
+        #     flop_counter = FlopCounterMode(depth=999999)
+        #     for key in batch.keys():
+        #         batch[key] = batch[key].to(local_rank)
+        #
+        #     optimizer.zero_grad()
+        #     output = model(
+        #         input_ids=batch["source_ids"],
+        #         attention_mask=batch["source_mask"],
+        #         labels=batch["target_ids"],
+        #     )
+        #     loss = output["loss"]
+        #     with flop_counter:
+        #         if scaler:
+        #             scaler.scale(loss).backward()
+        #             scaler.step(optimizer)
+        #             scaler.update()  # adjust scaling for next minibatch
+        #         else:
+        #             loss.backward()
+        #             optimizer.step()
+        # elif epoch == 1 and batch_idx == 12 and rank == 0:
+        #     flop_counter = FlopCounterMode(depth=999999)
+        #     for key in batch.keys():
+        #         batch[key] = batch[key].to(local_rank)
+        #
+        #     optimizer.zero_grad()
+        #     with flop_counter:
+        #         output = model(
+        #             input_ids=batch["source_ids"],
+        #             attention_mask=batch["source_mask"],
+        #             labels=batch["target_ids"],
+        #         )
+        #         loss = output["loss"]
+        #
+        #         if scaler:
+        #             scaler.scale(loss).backward()
+        #             scaler.step(optimizer)
+        #             scaler.update()  # adjust scaling for next minibatch
+        #         else:
+        #             loss.backward()
+        #             optimizer.step()
+        # else:
+        for key in batch.keys():
+            batch[key] = batch[key].to(local_rank)
 
-            optimizer.zero_grad()
-            print(batch["source_ids"].dtype)
-            print(batch["source_mask"].dtype)
-            print(batch["target_ids"].dtype)
-            print(batch["source_ids"].nbytes)
-            print(batch["source_mask"].nbytes)
-            print(batch["target_ids"].nbytes)
-            with flop_counter:
-                output = model(
-                    input_ids=batch["source_ids"],
-                    attention_mask=batch["source_mask"],
-                    labels=batch["target_ids"],
-                )
-                loss = output["loss"]
+        optimizer.zero_grad()
+        output = model(
+            input_ids=batch["source_ids"],
+            attention_mask=batch["source_mask"],
+            labels=batch["target_ids"],
+        )
+        loss = output["loss"]
 
-            if scaler:
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()  # adjust scaling for next minibatch
-            else:
-                loss.backward()
-                optimizer.step()
-        elif epoch == 1 and batch_idx == 11 and rank == 0:
-            flop_counter = FlopCounterMode(depth=999999)
-            for key in batch.keys():
-                batch[key] = batch[key].to(local_rank)
-
-            optimizer.zero_grad()
-            output = model(
-                input_ids=batch["source_ids"],
-                attention_mask=batch["source_mask"],
-                labels=batch["target_ids"],
-            )
-            loss = output["loss"]
-            with flop_counter:
-                if scaler:
-                    scaler.scale(loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()  # adjust scaling for next minibatch
-                else:
-                    loss.backward()
-                    optimizer.step()
-        elif epoch == 1 and batch_idx == 12 and rank == 0:
-            flop_counter = FlopCounterMode(depth=999999)
-            for key in batch.keys():
-                batch[key] = batch[key].to(local_rank)
-
-            optimizer.zero_grad()
-            with flop_counter:
-                output = model(
-                    input_ids=batch["source_ids"],
-                    attention_mask=batch["source_mask"],
-                    labels=batch["target_ids"],
-                )
-                loss = output["loss"]
-
-                if scaler:
-                    scaler.scale(loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()  # adjust scaling for next minibatch
-                else:
-                    loss.backward()
-                    optimizer.step()
+        if scaler:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()  # adjust scaling for next minibatch
         else:
-            for key in batch.keys():
-                batch[key] = batch[key].to(local_rank)
-
-            optimizer.zero_grad()
-            output = model(
-                input_ids=batch["source_ids"],
-                attention_mask=batch["source_mask"],
-                labels=batch["target_ids"],
-            )
-            loss = output["loss"]
-
-            if scaler:
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()  # adjust scaling for next minibatch
-            else:
-                loss.backward()
-                optimizer.step()
+            loss.backward()
+            optimizer.step()
 
         ddp_loss[0] += loss.item()
         ddp_loss[1] += 1
