@@ -85,7 +85,7 @@ class train_config:
     use_mixed_precision: bool = True
 
     HF_activation_checkpointing: bool = False
-    FSDP_activation_checkpointing: bool = False
+    FSDP_activation_checkpointing: bool = True
 
     # datasets
     # dataset_train = "datasets_grammar/gtrain_150K.csv"
