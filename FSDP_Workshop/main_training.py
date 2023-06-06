@@ -476,20 +476,20 @@ def fsdp_main(args):
     # and stream the shards to each GPU.
     # we also pass in our mixed precision policy here
 
-    # model = model.to(torch.cuda.current_device())
-    # model = DDP(
-    #     model,
-    #     device_ids=[torch.cuda.current_device()])
-    model = FSDP(
+    model = model.to(torch.cuda.current_device())
+    model = DDP(
         model,
-        auto_wrap_policy=wrapping_policy,
-        mixed_precision=mp_policy,
-        sharding_strategy=model_sharding_strategy,
-        backward_prefetch = model_backward_prefetch,
-        cpu_offload=CPUOffload(cpu_offload),
-        device_id=torch.cuda.current_device() if not cpu_offload else None,  # streaming init
-        # limit_all_gathers=True
-    )
+        device_ids=[torch.cuda.current_device()])
+    # model = FSDP(
+    #     model,
+    #     auto_wrap_policy=wrapping_policy,
+    #     mixed_precision=mp_policy,
+    #     sharding_strategy=model_sharding_strategy,
+    #     backward_prefetch = model_backward_prefetch,
+    #     cpu_offload=CPUOffload(cpu_offload),
+    #     device_id=torch.cuda.current_device() if not cpu_offload else None,  # streaming init
+    #     # limit_all_gathers=True
+    # )
 
     # if fsdp activation checkpointing:
     if cfg.FSDP_activation_checkpointing:
