@@ -475,7 +475,7 @@ def fsdp_main(args):
     # Main FSDP call - this inits FSDP with our model and FSDP will create the sharding plan
     # and stream the shards to each GPU.
     # we also pass in our mixed precision policy here
-
+    model = model.to(torch.cuda.current_device())
     model = DDP(
         model,
         device_ids=[torch.cuda.current_device()]
