@@ -279,13 +279,13 @@ def train(
         )
         loss = output["loss"]
 
-        # if scaler:
-        #     scaler.scale(loss).backward()
-        #     scaler.step(optimizer)
-        #     scaler.update()  # adjust scaling for next minibatch
-        # else:
-        #     loss.backward()
-        #     optimizer.step()
+        if scaler:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()  # adjust scaling for next minibatch
+        else:
+            loss.backward()
+            # optimizer.step()
 
         ddp_loss[0] += loss.item()
         ddp_loss[1] += 1
