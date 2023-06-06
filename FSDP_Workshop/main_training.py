@@ -284,7 +284,8 @@ def train(
             scaler.step(optimizer)
             scaler.update()  # adjust scaling for next minibatch
         else:
-            if batch_idx == 1:
+            if batch_idx % 10 == 1:
+                optimizer.zero_grad()
                 loss.backward()
             optimizer.step()
 
