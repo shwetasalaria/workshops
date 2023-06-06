@@ -271,7 +271,7 @@ def train(
         for key in batch.keys():
             batch[key] = batch[key].to(local_rank)
 
-        optimizer.zero_grad()
+        # optimizer.zero_grad()
         output = model(
             input_ids=batch["source_ids"],
             attention_mask=batch["source_mask"],
@@ -284,8 +284,9 @@ def train(
             scaler.step(optimizer)
             scaler.update()  # adjust scaling for next minibatch
         else:
-            loss.backward()
-            # optimizer.step()
+            if batch_idx == 1:
+                loss.backward()
+            optimizer.step()
 
         ddp_loss[0] += loss.item()
         ddp_loss[1] += 1
