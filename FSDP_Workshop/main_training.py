@@ -480,7 +480,7 @@ def fsdp_main(args):
     model = DDP(
         model,
         device_ids=[torch.cuda.current_device()],
-        bucket_cap_mb=10,
+        bucket_cap_mb=25,
     )
     # model = FSDP(
     #     model,
