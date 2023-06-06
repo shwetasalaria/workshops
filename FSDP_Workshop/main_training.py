@@ -490,7 +490,7 @@ def fsdp_main(args):
     # if fsdp activation checkpointing:
     if cfg.FSDP_activation_checkpointing:
         import activation_checkpointing as ac
-        ac.apply_fsdp_checkpointing(model)
+        # ac.apply_fsdp_checkpointing(model)
 
         # confirm we are not double checkpointing
         if cfg.HF_activation_checkpointing:
