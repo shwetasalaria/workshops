@@ -32,7 +32,7 @@ def demo_basic():
     loss_fn = nn.MSELoss()
     optimizer = optim.SGD(ddp_model.parameters(), lr=0.001)
 
-    for _ in tqdm(range(1000000000000000000000)):
+    for _ in tqdm(range(2147483647)):
         optimizer.zero_grad()
         outputs = ddp_model(torch.randn(20, 10))
         labels = torch.randn(20, 5).to(device_id)
