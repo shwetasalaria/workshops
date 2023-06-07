@@ -41,4 +41,5 @@ def demo_basic():
 
 
 if __name__ == "__main__":
+    print(torch.__version__)
     demo_basic()
