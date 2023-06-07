@@ -7,6 +7,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from tqdm import tqdm
 
+# from: https://pytorch.org/tutorials/intermediate/ddp_tutorial.html#initialize-ddp-with-torch-distributed-run-torchrun
 
 class ToyModel(nn.Module):
     def __init__(self):
