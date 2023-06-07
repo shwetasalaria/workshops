@@ -11,9 +11,9 @@ from tqdm import tqdm
 class ToyModel(nn.Module):
     def __init__(self):
         super(ToyModel, self).__init__()
-        self.net1 = nn.Linear(10, 10000)
+        self.net1 = nn.Linear(10, 1000000000)
         self.relu = nn.ReLU()
-        self.net2 = nn.Linear(10000, 5)
+        self.net2 = nn.Linear(100000000, 5)
 
     def forward(self, x):
         return self.net2(self.relu(self.net1(x)))
@@ -27,6 +27,7 @@ def demo_basic():
     # create model and move it to GPU with id rank
     device_id = rank % torch.cuda.device_count()
     model = ToyModel().to(device_id)
+    print(f"\n--> model has {sum(p.numel() for p in model.parameters() if p.requires_grad)/1e6} Million params\n")
     ddp_model = DDP(model, device_ids=[device_id])
 
     loss_fn = nn.MSELoss()
