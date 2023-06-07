@@ -11,9 +11,9 @@ from tqdm import tqdm
 class ToyModel(nn.Module):
     def __init__(self):
         super(ToyModel, self).__init__()
-        self.net1 = nn.Linear(10, 100000)
+        self.net1 = nn.Linear(10, 10000)
         self.relu = nn.ReLU()
-        self.net2 = nn.Linear(100000, 5)
+        self.net2 = nn.Linear(10000, 5)
 
     def forward(self, x):
         return self.net2(self.relu(self.net1(x)))
