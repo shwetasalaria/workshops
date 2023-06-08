@@ -44,7 +44,7 @@ def demo_basic():
             "profile_traces"
         ),
         profile_memory=True,
-        with_stack=False,
+        with_stack=True,
         record_shapes=True,
     )
 
