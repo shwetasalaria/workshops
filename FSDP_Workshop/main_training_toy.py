@@ -34,28 +34,27 @@ def demo_basic():
     loss_fn = nn.MSELoss()
     optimizer = optim.SGD(ddp_model.parameters(), lr=0.001)
 
-    profiler = torch.profiler.profile(
-        activities=[
-            torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.CUDA,
-        ],
-        schedule=torch.profiler.schedule(wait=100, warmup=100, active=3, repeat=1),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(
-            "profile_traces"
-        ),
-        profile_memory=True,
-        with_stack=True,
-        record_shapes=True,
-    )
+    # profiler = torch.profiler.profile(
+    #     activities=[
+    #         torch.profiler.ProfilerActivity.CPU,
+    #         torch.profiler.ProfilerActivity.CUDA,
+    #     ],
+    #     schedule=torch.profiler.schedule(wait=100, warmup=100, active=3, repeat=1),
+    #     on_trace_ready=torch.profiler.tensorboard_trace_handler(
+    #         "profile_traces"
+    #     ),
+    #     profile_memory=True,
+    #     with_stack=False,
+    #     record_shapes=True,
+    # )
 
     for _ in tqdm(range(1000000000)):
-        # optimizer.zero_grad()
+        optimizer.zero_grad()
         outputs = ddp_model(torch.randn(20, 10))
         labels = torch.randn(20, 5).to(device_id)
-        if _ == 0:
-            loss_fn(outputs, labels).backward()
+        loss_fn(outputs, labels).backward()
         optimizer.step()
-        profiler.step()
+        # profiler.step()
 
 
 if __name__ == "__main__":
