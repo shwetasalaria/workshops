@@ -72,6 +72,8 @@ class train_config:
         backward_prefetch = BackwardPrefetch.BACKWARD_PRE
     elif backward_prefetch == "post":
         backward_prefetch = BackwardPrefetch.BACKWARD_POST
+    elif backward_prefetch == "none":
+        backward_prefetch = None
     else:
         backward_prefetch = BackwardPrefetch.BACKWARD_PRE
     

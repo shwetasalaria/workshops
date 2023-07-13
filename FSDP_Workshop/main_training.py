@@ -487,7 +487,7 @@ def fsdp_main(args):
         auto_wrap_policy=wrapping_policy,
         mixed_precision=mp_policy,
         sharding_strategy=model_sharding_strategy,
-        backward_prefetch=None,
+        backward_prefetch=model_backward_prefetch,
         cpu_offload=CPUOffload(cpu_offload),
         device_id=torch.cuda.current_device() if not cpu_offload else None,  # streaming init
         limit_all_gathers=True
