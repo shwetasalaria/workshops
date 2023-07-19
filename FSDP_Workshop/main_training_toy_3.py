@@ -34,15 +34,16 @@ def demo_basic():
         output1 = model.net1(torch.randn(20, 10))
         print(rank, 'output1', output1[:10])
         output2 = model.relu(output1)
-        print(rank, 'output1', output1[:10])
-        output3 = model.net2(output2)
-        print(rank, 'output1', output1[:10])
-        dist.all_reduce(output1, op=dist.ReduceOp.SUM)
-        print(rank, 'output1', output1[:10])
-        dist.all_reduce(output2, op=dist.ReduceOp.SUM)
         print(rank, 'output2', output2[:10])
+        output3 = model.net2(output2)
+        print(rank, 'output3', output3[:10])
         dist.all_reduce(output3, op=dist.ReduceOp.SUM)
         print(rank, 'output3', output3[:10])
+        dist.all_reduce(output2, op=dist.ReduceOp.SUM)
+        print(rank, 'output2', output2[:10])
+        dist.all_reduce(output1, op=dist.ReduceOp.SUM)
+        print(rank, 'output1', output1[:10])
+
 
 if __name__ == "__main__":
     print(torch.__version__)
