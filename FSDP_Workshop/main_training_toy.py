@@ -29,9 +29,9 @@ def demo_basic():
     device_id = rank % torch.cuda.device_count()
     model = ToyModel().to(device_id)
     print(f"\n--> model has {sum(p.numel() for p in model.parameters() if p.requires_grad)/1e6} Million params\n")
-    # dist._DEFAULT_FIRST_BUCKET_BYTES = int(10000 * 1024 * 1024)
-    # ddp_model = DDP(model, device_ids=[device_id], bucket_cap_mb=10000)
-    ddp_model = DDP(model, device_ids=[device_id])
+    dist._DEFAULT_FIRST_BUCKET_BYTES = int(10000 * 1024 * 1024)
+    ddp_model = DDP(model, device_ids=[device_id], bucket_cap_mb=10000)
+    # ddp_model = DDP(model, device_ids=[device_id])
 
     loss_fn = nn.MSELoss()
     optimizer = optim.SGD(ddp_model.parameters(), lr=0.001)
