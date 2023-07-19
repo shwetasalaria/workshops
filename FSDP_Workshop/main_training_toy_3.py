@@ -30,19 +30,13 @@ def demo_basic():
     model = ToyModel().to(device_id)
     print(f"\n--> model has {sum(p.numel() for p in model.parameters() if p.requires_grad)/1e6} Million params\n")
 
-    for _ in tqdm(range(1)):
+    for _ in tqdm(range(1000000000)):
         output1 = model.net1(torch.randn(20, 10).to(device_id))
-        print(rank, 'output1', output1[:10])
         output2 = model.relu(output1)
-        print(rank, 'output2', output2[:10])
         output3 = model.net2(output2)
-        print(rank, 'output3', output3[:10])
         dist.all_reduce(output3, op=dist.ReduceOp.SUM)
-        print(rank, 'output3', output3[:10])
         dist.all_reduce(output2, op=dist.ReduceOp.SUM)
-        print(rank, 'output2', output2[:10])
         dist.all_reduce(output1, op=dist.ReduceOp.SUM)
-        print(rank, 'output1', output1[:10])
 
 
 if __name__ == "__main__":
