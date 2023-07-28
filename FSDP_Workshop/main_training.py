@@ -296,7 +296,7 @@ def train(
         if profiler:
             profiler.step()
 
-        if batch_idx == 100:
+        if batch_idx == 20:
             with FSDP.state_dict_type(model, StateDictType.SHARDED_STATE_DICT):
                 state_dict = {
                     "model": model.state_dict(),
