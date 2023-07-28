@@ -296,6 +296,17 @@ def train(
         if profiler:
             profiler.step()
 
+        if batch_idx == 100:
+            with FSDP.state_dict_type(model, StateDictType.SHARDED_STATE_DICT):
+                state_dict = {
+                    "model": model.state_dict(),
+                    "optim": FSDP.optim_state_dict(model, optimizer),
+                }
+                dist_cp.save_state_dict(
+                    state_dict=state_dict,
+                    storage_writer=dist_cp.FileSystemWriter("ckpt"),
+                )
+
     # consolidate final loss number - do not use .reduce here, requires global synch
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     train_accuracy = ddp_loss[0] / ddp_loss[1]
@@ -618,16 +629,6 @@ def fsdp_main(args):
             curr_val_loss = validation(model, local_rank, rank, world_size, test_loader)
 
         scheduler.step()
-
-        with FSDP.state_dict_type(model, StateDictType.SHARDED_STATE_DICT):
-            state_dict = {
-                "model": model.state_dict(),
-                "optim": FSDP.optim_state_dict(model, optimizer),
-            }
-            dist_cp.save_state_dict(
-                state_dict=state_dict,
-                storage_writer=dist_cp.FileSystemWriter("ckpt"),
-            )
 
         if rank == 0:
             print(f"--> epoch {epoch} completed...entering save and stats zone")
