@@ -46,6 +46,7 @@ from torch.distributed.fsdp import (
     StateDictType,
 )
 
+import torch.distributed.checkpoint as dist_cp
 
 # wrapping policy for determining FSDP units for sharding
 from torch.distributed.fsdp.wrap import (
@@ -617,6 +618,16 @@ def fsdp_main(args):
             curr_val_loss = validation(model, local_rank, rank, world_size, test_loader)
 
         scheduler.step()
+
+        with FSDP.state_dict_type(model, StateDictType.SHARDED_STATE_DICT):
+            state_dict = {
+                "model": model.state_dict(),
+                "optim": FSDP.optim_state_dict(model, optimizer),
+            }
+            dist_cp.save_state_dict(
+                state_dict=state_dict,
+                storage_writer=dist_cp.FileSystemWriter("ckpt"),
+            )
 
         if rank == 0:
             print(f"--> epoch {epoch} completed...entering save and stats zone")
