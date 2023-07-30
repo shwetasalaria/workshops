@@ -29,34 +29,34 @@ def demo_basic():
     device_id = rank % torch.cuda.device_count()
     model = ToyModel().to(device_id)
     print(f"\n--> model has {sum(p.numel() for p in model.parameters() if p.requires_grad)/1e6} Million params\n")
-    dist._DEFAULT_FIRST_BUCKET_BYTES = int(10000 * 1024 * 1024)
-    ddp_model = DDP(model, device_ids=[device_id], bucket_cap_mb=10000)
-    # ddp_model = DDP(model, device_ids=[device_id])
+    # dist._DEFAULT_FIRST_BUCKET_BYTES = int(10000 * 1024 * 1024)
+    ddp_model = DDP(model, device_ids=[device_id])
 
     loss_fn = nn.MSELoss()
     optimizer = optim.SGD(ddp_model.parameters(), lr=0.001)
 
-    profiler = torch.profiler.profile(
-        activities=[
-            torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.CUDA,
-        ],
-        schedule=torch.profiler.schedule(wait=10, warmup=10, active=3, repeat=1),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(
-            "profile_traces"
-        ),
-        profile_memory=True,
-        with_stack=False,
-        record_shapes=True,
-    )
+    # profiler = torch.profiler.profile(
+    #     activities=[
+    #         torch.profiler.ProfilerActivity.CPU,
+    #         torch.profiler.ProfilerActivity.CUDA,
+    #     ],
+    #     schedule=torch.profiler.schedule(wait=10, warmup=10, active=3, repeat=1),
+    #     on_trace_ready=torch.profiler.tensorboard_trace_handler(
+    #         "profile_traces"
+    #     ),
+    #     profile_memory=True,
+    #     with_stack=False,
+    #     record_shapes=True,
+    # )
 
     for _ in tqdm(range(1000000000)):
         optimizer.zero_grad()
-        outputs = ddp_model(torch.randn(20, 10))
-        labels = torch.randn(20, 5).to(device_id)
-        loss_fn(outputs, labels).backward()
-        optimizer.step()
-        profiler.step()
+        with ddp_model.no_sync():
+            outputs = ddp_model(torch.randn(20, 10))
+            labels = torch.randn(20, 5).to(device_id)
+            loss_fn(outputs, labels).backward()
+        # optimizer.step()
+        # profiler.step()
 
 
 if __name__ == "__main__":
