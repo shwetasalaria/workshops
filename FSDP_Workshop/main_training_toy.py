@@ -28,6 +28,7 @@ def demo_basic():
     # create model and move it to GPU with id rank
     device_id = rank % torch.cuda.device_count()
     model = ToyModel().to(device_id)
+    print(rank, torch.cuda.device_count(), device_id)
     print(f"\n--> model has {sum(p.numel() for p in model.parameters() if p.requires_grad)/1e6} Million params\n")
     # dist._DEFAULT_FIRST_BUCKET_BYTES = int(10000 * 1024 * 1024)
     ddp_model = DDP(model, device_ids=[device_id])
