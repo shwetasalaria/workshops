@@ -30,7 +30,7 @@ def demo_basic():
     print(f"Start running basic DDP example on rank {rank}.")
 
     # prepare all gather tensors and matrix
-    unit_size = int(34 * 1,000,000,000 / 60 / world_size)
+    unit_size = int(34 * 1000000000 / 60 / world_size)
 
     all_gather_tensor_list = [torch.zeros(unit_size, dtype=torch.bfloat16).to(local_rank) for _ in range(world_size)]
     all_gather_tensor = torch.randn(unit_size, dtype=torch.bfloat16).to(local_rank)
