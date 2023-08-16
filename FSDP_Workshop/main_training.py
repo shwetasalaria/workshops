@@ -515,6 +515,10 @@ def fsdp_main(args):
             print(f"cannot run with both HF and FSDP checkpointing.  Please check config..aborting")
             return
 
+    if cfg.use_torch_compile:
+        model = torch.compile(model)
+        if rank == 0:
+            print("######### Compile is being use ###############")
     
     #optional - you can print the sharding plan to see how FSDP has structured the layout.
     if rank == 0 and cfg.print_sharding_plan:

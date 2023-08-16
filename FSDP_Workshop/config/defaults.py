@@ -43,6 +43,8 @@ class train_config:
         2  # number of 'best' checkpoints to save based on val loss
     )
 
+    # compile
+    use_torch_compile: bool = False
 
     # sharding policy
     # sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
