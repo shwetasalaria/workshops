@@ -44,7 +44,11 @@ class train_config:
     )
 
     # compile
-    use_torch_compile: bool = False
+    use_torch_compile = os.getenv("USE_TORCH_COMPILE", "false").lower()
+    if use_torch_compile == "true":
+        use_torch_compile = True
+    else:
+        use_torch_compile = False
 
     # sharding policy
     # sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
