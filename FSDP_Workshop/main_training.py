@@ -296,16 +296,16 @@ def train(
         if profiler:
             profiler.step()
 
-        if batch_idx == 20:
-            with FSDP.state_dict_type(model, StateDictType.SHARDED_STATE_DICT):
-                state_dict = {
-                    "model": model.state_dict(),
-                    "optim": FSDP.optim_state_dict(model, optimizer),
-                }
-                dist_cp.save_state_dict(
-                    state_dict=state_dict,
-                    storage_writer=dist_cp.FileSystemWriter("ckpt"),
-                )
+        # if batch_idx == 20:
+        #     with FSDP.state_dict_type(model, StateDictType.SHARDED_STATE_DICT):
+        #         state_dict = {
+        #             "model": model.state_dict(),
+        #             "optim": FSDP.optim_state_dict(model, optimizer),
+        #         }
+        #         dist_cp.save_state_dict(
+        #             state_dict=state_dict,
+        #             storage_writer=dist_cp.FileSystemWriter("ckpt"),
+        #         )
 
     # consolidate final loss number - do not use .reduce here, requires global synch
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
