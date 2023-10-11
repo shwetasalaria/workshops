@@ -11,7 +11,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch
 
-from transformers.models.t5.modeling_t5 import T5Block
+from fms.models.llama import LLaMABlock
 
 from torch.distributed.fsdp.fully_sharded_data_parallel import (
     FullyShardedDataParallel as FSDP,
@@ -29,17 +29,17 @@ import functools
 from typing import Type
 
 
-def get_t5_wrapper():
+def get_llama_wrapper():
     """we register our main layer class and use the fsdp transformer wrapping policy
     ensures embedding layers are in the root fsdp unit for shared access and that fsdp units map to transformer layers
     """
     # ====   use new transformer wrapper
 
-    t5_auto_wrap_policy = functools.partial(
+    llama_auto_wrap_policy = functools.partial(
         transformer_auto_wrap_policy,
         transformer_layer_cls={
-            T5Block,
+            LLaMABlock,
         },
     )
 
-    return t5_auto_wrap_policy
+    return llama_auto_wrap_policy

@@ -11,31 +11,12 @@ from torch.distributed.fsdp import ShardingStrategy, BackwardPrefetch
 
 @dataclass
 class train_config:
-    # general
-    host_port: str = "12368"
-
     # seed
-    seed: int = 2022
-    
-    
-    # model
-    # model_name = "google/t5-v1_1-xl"  # << - adjust model size here
-    model_name = os.getenv("MODEL_NAME", "3b").lower()
-    if model_name == "3b":
-        model_name = "google/t5-v1_1-xl"
-    elif model_name == "11b":
-        model_name = "google/t5-v1_1-xxl"
-    else:
-        model_name = "google/t5-v1_1-xl"
-    
-    # available models
-    # google/t5-v1_1-small  # 60 M
-    # google/t5-v1_1-base   # 223 M
-    # google/t5-v1_1-large  # 737 M
-    # google/t5-v1_1-xl     # 3 Billion
-    # google/t5-v1_1-xxl    # 11 Billion 
+    seed: int = 2023
 
-    tokenizer = "t5-large"   # no need to adjust, tokenizer works for all model sizes
+    # model
+    model_name = os.getenv("MODEL_NAME", "/lustre/llama_weights/7B")
+    tokenizer = "/lustre/llama_weights/tokenizer.model"   # no need to adjust, tokenizer works for all model sizes
 
     # save models
     save_model: bool = False
@@ -65,27 +46,6 @@ class train_config:
         sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
     print_sharding_plan: bool = False
 
-
-    # cpu offload
-    cpu_offload = os.getenv("CPU_OFFLOAD", "false").lower()
-    if cpu_offload == "true":
-        cpu_offload = True
-    else:
-        cpu_offload = False
-
-    # backward prefetch
-    # backward_prefetch = BackwardPrefetch.BACKWARD_PRE  #BACKWARD_PRE, BACKWARD_POST
-    backward_prefetch = os.getenv("BACKWARD_PREFETCH", "pre").lower()
-    if backward_prefetch == "pre":
-        backward_prefetch = BackwardPrefetch.BACKWARD_PRE
-    elif backward_prefetch == "post":
-        backward_prefetch = BackwardPrefetch.BACKWARD_POST
-    elif backward_prefetch == "none":
-        backward_prefetch = None
-    else:
-        backward_prefetch = BackwardPrefetch.BACKWARD_PRE
-    
-
     # dataloaders
     num_workers_dataloader: int = 0
 
@@ -94,7 +54,6 @@ class train_config:
     # use FP16.  (note that FP16 is not recommended for larger models...)
     use_mixed_precision: bool = True
 
-    HF_activation_checkpointing: bool = False
     FSDP_activation_checkpointing: bool = True
 
     # datasets
@@ -103,7 +62,7 @@ class train_config:
     dataset_test = "datasets_grammar/grammar_validation.csv"
 
     # training
-    batch_size: int = int(os.getenv("BATCH_SIZE", "50"))
+    batch_size: int = int(os.getenv("BATCH_SIZE", "2"))
     num_epochs: int = 2
 
     # validation
@@ -118,7 +77,6 @@ class train_config:
     distributed_debug: bool = True
 
     # Fine Tuning
-    use_child_tuning: bool = False
     learning_rate: float = 4e-8
 
     use_task_free: bool = True

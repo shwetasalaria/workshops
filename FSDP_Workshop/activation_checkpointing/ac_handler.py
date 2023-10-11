@@ -7,7 +7,7 @@ from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     apply_activation_checkpointing,
 )
 
-from transformers.models.t5.modeling_t5 import T5Block
+from fms.models.llama import LLaMABlock
 
 from functools import partial
 
@@ -16,7 +16,7 @@ non_reentrant_wrapper = partial(
     checkpoint_impl=CheckpointImpl.NO_REENTRANT,
 )
 
-check_fn = lambda submodule: isinstance(submodule, T5Block)
+check_fn = lambda submodule: isinstance(submodule, LLaMABlock)
 
 
 def apply_fsdp_checkpointing(model):

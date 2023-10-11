@@ -5,85 +5,33 @@
 # LICENSE file in the root directory of this source tree.
 
 
-# main hq file for t5 training
-# general code comments added for clarity
-
-import os
 import argparse
-# our custom dataset handler class
-from datasets_grammar.grammar_dataset import grammar
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-
-# for grammar correction
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-
-# for generation
-from transformers import T5Tokenizer, T5ForConditionalGeneration
-from transformers import DataCollatorForSeq2Seq
-
-import functools
-from torch.optim.lr_scheduler import StepLR
-import torch.nn.functional as F
-import torch.distributed as dist
-import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data.distributed import DistributedSampler
-
-# from torch.utils.flop_counter import FlopCounterMode
-
-# main FSDP imports
-from torch.distributed.fsdp import (
-    FullyShardedDataParallel as FSDP,
-    CPUOffload,
-    MixedPrecision,
-    BackwardPrefetch,
-    ShardingStrategy,
-    FullStateDictConfig,
-    StateDictType,
-)
-
-import torch.distributed.checkpoint as dist_cp
-
-# wrapping policy for determining FSDP units for sharding
-from torch.distributed.fsdp.wrap import (
-    transformer_auto_wrap_policy,
-    enable_wrap,
-    wrap,
-)
-
-# control over mixed precision
-from policies import mixed_precision
-
-
-from datasets import load_dataset, load_metric
-from torch.utils.data import DataLoader
-from pathlib import Path
-from torch.utils.data import DataLoader
-
-from ChildTuningOptimizer import ChildTuningAdamW
-
-from sklearn.model_selection import train_test_split
+import os
 import time
+from collections import deque
 from datetime import datetime
 
-# local imports
-import verify
-import policies
-import model_checkpoints
-from collections import deque
-
-
-import datasets_grammar as dg
+import torch
+import torch.optim as optim
 import tqdm
-
-import performance
+from fms.datasets import instructions
+from fms.models import llama
+from fms.utils import tokenizers
+from torch import distributed as dist
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+# main FSDP imports
+from torch.distributed.fsdp import (
+    ShardingStrategy,
+)
+from torch.optim.lr_scheduler import StepLR
+from torch.utils.data.distributed import DistributedSampler
 
 # config
 import config
+import performance
+import policies
+# local imports
+import verify
 
 # some globals
 g_gigabyte = 1024**3
@@ -136,7 +84,7 @@ def get_policies(cfg):
             mixed_precision_policy = policies.fpSixteen
             print(f"BFloat16 support not present. Switching to FP16 with dynamic scaling.")
 
-    wrapping_policy = policies.get_t5_wrapper()
+    wrapping_policy = policies.get_llama_wrapper()
 
     return mixed_precision_policy, wrapping_policy
 
@@ -396,7 +344,7 @@ def fsdp_main(args):
         if rank==0:
             print(f"--> FP16 implemented for mixed precision support.")
 
-    model_name = cfg.model_name  # "google/t5-v1_1-small"
+    model_name = cfg.model_name
     if rank == 0:
         print(f"--> training for model {model_name}")
 
@@ -411,9 +359,9 @@ def fsdp_main(args):
     # google/t5-v1_1-xxl #11b
 
     # grammar correction setup - uses HF tokenizer and wrapped T5 model
-    tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer, model_max_length=512)
+    tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
 
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, use_cache=False)
+    model = llama.load_fms_llama(model_name)
 
     if rank == 0:
         print(f"--> Training for {model_name}")
@@ -425,13 +373,21 @@ def fsdp_main(args):
     if cfg.dataset_train:
         train_name = cfg.dataset_train
 
-    train_dataset = dg.get_dataset(tokenizer, train_name, 512, 512, True)
+    bos_token = '<s>'  # for char tokenizer should be 2 and 3. TODO add to tokenizer?
+    eos_token = '</s>'
+    bos_token_id = tokenizer.convert_tokens_to_ids([bos_token])[0]
+    eos_token_id = tokenizer.convert_tokens_to_ids([eos_token])[0]
+
+    train_dataset = instructions.JsonInstructions(
+        "/home/bvaughan/alpaca_data.json",
+        tokenizer=tokenizer, max_len=4096, device="cpu",
+        bos_tok_id=bos_token_id, eos_tok_id=eos_token_id
+    )
     if 0 == os.getenv("RANK"):
         print(f"--> Training Set Len = {len(train_dataset)}")
         print(f"using dataset {train_name}")
-    
 
-    val_dataset = dg.get_dataset(tokenizer, cfg.dataset_test, 512, 512, True)
+    val_dataset = train_dataset
     if 0 == os.getenv("RANK"):
         print(f"--> Validation set len = {len(val_dataset)}")
         print(f"using dataset {cfg.dataset_test}")
@@ -460,49 +416,21 @@ def fsdp_main(args):
     
     clear_gpu_cache(local_rank)
 
-    # HF checkpointing...
-    if cfg.HF_activation_checkpointing:
-        model.gradient_checkpointing_enable()
-        print(f"HF Activation checkpointing enabled\n")
-
     # --- sharding policy
     model_sharding_strategy = (
         cfg.sharding_strategy or ShardingStrategy.FULL_SHARD
     )  # use config, but default to normal if not available
     if rank == 0:
         print(f"Sharding strategy = {model_sharding_strategy}")
-
-    # --- cpu offload
-    cpu_offload = cfg.cpu_offload or False
-
-    # --- backward prefetch
-    model_backward_prefetch = (
-        cfg.backward_prefetch or None
-    )  # use config, but default to None (i.e. default) if not available
-    if rank == 0:
-        print(f"Backward prefetch = {model_backward_prefetch}")
-
-
     
-    # Main FSDP call - this inits FSDP with our model and FSDP will create the sharding plan
-    # and stream the shards to each GPU.
-    # we also pass in our mixed precision policy here
-
-    # model = model.to(torch.cuda.current_device())
-    # model = DDP(
-    #     model,
-    #     device_ids=[torch.cuda.current_device()],
-    #     # bucket_cap_mb=1000,
-    # )
+    # Main FSDP call
     model = FSDP(
         model,
         auto_wrap_policy=wrapping_policy,
         mixed_precision=mp_policy,
         sharding_strategy=model_sharding_strategy,
-        backward_prefetch=model_backward_prefetch,
         use_orig_params=cfg.use_orig_params,
-        cpu_offload=CPUOffload(cpu_offload),
-        device_id=torch.cuda.current_device() if not cpu_offload else None,  # streaming init
+        device_id=torch.cuda.current_device(),
         limit_all_gathers=True
     )
 
@@ -510,11 +438,6 @@ def fsdp_main(args):
     if cfg.FSDP_activation_checkpointing:
         import activation_checkpointing as ac
         ac.apply_fsdp_checkpointing(model)
-
-        # confirm we are not double checkpointing
-        if cfg.HF_activation_checkpointing:
-            print(f"cannot run with both HF and FSDP checkpointing.  Please check config..aborting")
-            return
 
     if cfg.use_torch_compile:
         model = torch.compile(model)
@@ -543,24 +466,9 @@ def fsdp_main(args):
     lr = cfg.learning_rate
     gamma = 0.85
 
-    # we can train with either ChildTuning (recommended) or whole model fine tuning.
-    if cfg.use_child_tuning:
-        if cfg.use_task_free:
-            optimizer = ChildTuningAdamW(
-                model.parameters(),
-                lr=lr,
-                weight_decay=0.01,
-                reserve_p=cfg.percent_F,
-                mode="taskfree",
-            )
-            if rank==0:
-                print(
-                f"--> Optimizer - Child Task Free tuning with {cfg.percent_F} percentage and lr of {lr} "
-            )
-    else:
-        optimizer = optim.AdamW(model.parameters(), lr=lr)
-        if rank==0:
-            print(f"--> AdamW whole model tuning with lr of {lr} ")
+    optimizer = optim.AdamW(model.parameters(), lr=lr)
+    if rank==0:
+        print(f"--> AdamW whole model tuning with lr of {lr} ")
 
     scheduler = StepLR(optimizer, step_size=1, gamma=gamma)
     epochs = cfg.num_epochs
@@ -586,19 +494,19 @@ def fsdp_main(args):
     # you can run profiling by un-commenting the below section.  Note that you will likely want to just profile
     # for a small set and smaller model (logs get very big, very fast).
     torch_profiler = None
-    torch_profiler = torch.profiler.profile(
-        activities=[
-            torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.CUDA,
-        ],
-        schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(
-            "profile_traces"
-        ),
-        profile_memory=True,
-        with_stack=False,
-        record_shapes=True,
-    )
+    # torch_profiler = torch.profiler.profile(
+    #     activities=[
+    #         torch.profiler.ProfilerActivity.CPU,
+    #         torch.profiler.ProfilerActivity.CUDA,
+    #     ],
+    #     schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
+    #     on_trace_ready=torch.profiler.tensorboard_trace_handler(
+    #         "profile_traces"
+    #     ),
+    #     profile_memory=True,
+    #     with_stack=False,
+    #     record_shapes=True,
+    # )
 
 
     if rank == 0 and cfg.track_memory:
@@ -649,37 +557,6 @@ def fsdp_main(args):
                     format_metrics_to_gb(torch.cuda.memory_allocated())
                 )
 
-        # save this epochs checkpoint if val loss is current best
-        if cfg.save_model and curr_val_loss < best_val_loss:
-            # update curr best val accuracy
-
-            # save
-            if rank == 0:
-                print(f"--> entering save model state...")
-            save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-            with FSDP.state_dict_type(
-                model, StateDictType.FULL_STATE_DICT, save_policy
-            ):
-                cpu_state = model.state_dict()
-            # states = model.state_dict()
-            print(f"saving process: rank {rank}  done w state_dict")
-            # dist.barrier()
-            # print(f"rank {rank}  done w 2nd barrier")
-
-            if rank == 0:
-                print(f"--> saving model ...")
-                currEpoch = (
-                    "-" + str(epoch) + "-" + str(round(curr_val_loss.item(), 4)) + ".pt"
-                )
-                save_name = file_save_name + "-" + time_of_run + "-" + currEpoch
-
-                torch.save(cpu_state, save_name)
-
-                print(f"--> saved {save_name} to disk")
-                dq.append(save_name)
-                # only keep a rolling number of model files to avoid excessive disk space use
-                model_checkpoints.prune_checkpoints(rank, dq, cfg)
-                
 
         # announce new val loss record:
         if rank == 0 and curr_val_loss < best_val_loss:
