@@ -149,10 +149,8 @@ def train(
 
     if sampler:
         sampler.set_epoch(epoch)
-    if rank == 0:
-        inner_pbar = tqdm.tqdm(
-            range(len(train_loader)), colour="blue", desc="Training Epoch"
-        )
+    start = time.time()
+    loop_start = time.time()
     for batch_idx, (input, label) in enumerate(train_loader, start=1):
         input = input.to(local_rank)
         label = label.to(local_rank)
@@ -173,28 +171,21 @@ def train(
         ddp_loss[0] += loss.item()
         ddp_loss[1] += 1
 
-        if rank == 0:
-            inner_pbar.update(1)
         if profiler:
             profiler.step()
 
-        # if batch_idx == 20:
-        #     with FSDP.state_dict_type(model, StateDictType.SHARDED_STATE_DICT):
-        #         state_dict = {
-        #             "model": model.state_dict(),
-        #             "optim": FSDP.optim_state_dict(model, optimizer),
-        #         }
-        #         dist_cp.save_state_dict(
-        #             state_dict=state_dict,
-        #             storage_writer=dist_cp.FileSystemWriter("ckpt"),
-        #         )
+        if batch_idx % 200 == 0:
+            elapsed_time = time.time() - loop_start
+            if rank == 0:
+                print("step:", batch_idx)
+                print("avg speed for these 200 steps", (time.time() - start) / 200)
+                print("overall speed: ", elapsed_time / batch_idx)
+            start = time.time()
 
     # consolidate final loss number - do not use .reduce here, requires global synch
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     train_accuracy = ddp_loss[0] / ddp_loss[1]
     if rank == 0:
-        inner_pbar.close()
-
         print(f"Train Epoch: \t{epoch}, Loss: \t{train_accuracy:.4f}")
     return train_accuracy
 

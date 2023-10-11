@@ -66,7 +66,7 @@ class train_config:
     num_epochs: int = 2
 
     # validation
-    run_validation: bool = True
+    run_validation: bool = False
     val_batch_size = 8
     block_for_validation: bool = False
 
