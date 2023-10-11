@@ -153,80 +153,14 @@ def train(
         inner_pbar = tqdm.tqdm(
             range(len(train_loader)), colour="blue", desc="Training Epoch"
         )
-    for batch_idx, batch in enumerate(train_loader, start=1):
-        # if epoch == 1 and batch_idx == 10 and rank == 0:
-        #     flop_counter = FlopCounterMode(depth=999999)
-        #     for key in batch.keys():
-        #         batch[key] = batch[key].to(local_rank)
-        #
-        #     optimizer.zero_grad()
-        #     with flop_counter:
-        #         output = model(
-        #             input_ids=batch["source_ids"],
-        #             attention_mask=batch["source_mask"],
-        #             labels=batch["target_ids"],
-        #         )
-        #         loss = output["loss"]
-        #
-        #     if scaler:
-        #         scaler.scale(loss).backward()
-        #         scaler.step(optimizer)
-        #         scaler.update()  # adjust scaling for next minibatch
-        #     else:
-        #         loss.backward()
-        #         optimizer.step()
-        # elif epoch == 1 and batch_idx == 11 and rank == 0:
-        #     flop_counter = FlopCounterMode(depth=999999)
-        #     for key in batch.keys():
-        #         batch[key] = batch[key].to(local_rank)
-        #
-        #     optimizer.zero_grad()
-        #     output = model(
-        #         input_ids=batch["source_ids"],
-        #         attention_mask=batch["source_mask"],
-        #         labels=batch["target_ids"],
-        #     )
-        #     loss = output["loss"]
-        #     with flop_counter:
-        #         if scaler:
-        #             scaler.scale(loss).backward()
-        #             scaler.step(optimizer)
-        #             scaler.update()  # adjust scaling for next minibatch
-        #         else:
-        #             loss.backward()
-        #             optimizer.step()
-        # elif epoch == 1 and batch_idx == 12 and rank == 0:
-        #     flop_counter = FlopCounterMode(depth=999999)
-        #     for key in batch.keys():
-        #         batch[key] = batch[key].to(local_rank)
-        #
-        #     optimizer.zero_grad()
-        #     with flop_counter:
-        #         output = model(
-        #             input_ids=batch["source_ids"],
-        #             attention_mask=batch["source_mask"],
-        #             labels=batch["target_ids"],
-        #         )
-        #         loss = output["loss"]
-        #
-        #         if scaler:
-        #             scaler.scale(loss).backward()
-        #             scaler.step(optimizer)
-        #             scaler.update()  # adjust scaling for next minibatch
-        #         else:
-        #             loss.backward()
-        #             optimizer.step()
-        # else:
-        for key in batch.keys():
-            batch[key] = batch[key].to(local_rank)
+    for batch_idx, (input, label) in enumerate(train_loader, start=1):
+        input = input.to(local_rank)
+        label = label.to(local_rank)
 
         optimizer.zero_grad()
-        output = model(
-            input_ids=batch["source_ids"],
-            attention_mask=batch["source_mask"],
-            labels=batch["target_ids"],
-        )
-        loss = output["loss"]
+        output = model(input)
+        ce_loss = torch.nn.CrossEntropyLoss()
+        loss = ce_loss(output.transpose(-1, -2), label)
 
         if scaler:
             scaler.scale(loss).backward()
@@ -349,16 +283,7 @@ def fsdp_main(args):
         print(f"--> training for model {model_name}")
 
     printable_model_name = str.replace(model_name, "/", "=")
-    file_save_name = "ModelCheckPoint-"  # printable_model_name + "-"
 
-    # t5-base
-    # google/t5-v1_1-small
-    # google/t5-v1_1-base
-    # google/t5-v1_1-large
-    # google/t5-v1_1-xl  #3b
-    # google/t5-v1_1-xxl #11b
-
-    # grammar correction setup - uses HF tokenizer and wrapped T5 model
     tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
 
     model = llama.load_fms_llama(model_name)
