@@ -19,18 +19,14 @@ from fms.models import llama
 from fms.utils import tokenizers
 from torch import distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-# main FSDP imports
 from torch.distributed.fsdp import (
     ShardingStrategy,
 )
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data.distributed import DistributedSampler
-
-# config
 import config
 import performance
 import policies
-# local imports
 import verify
 
 # some globals
@@ -353,7 +349,7 @@ def fsdp_main(args):
     # if fsdp activation checkpointing:
     if cfg.FSDP_activation_checkpointing:
         import activation_checkpointing as ac
-        ac.apply_fsdp_checkpointing(model)
+        ac.apply_fsdp_checkpointing(model, cfg.selective_checkpointing)
 
     if cfg.use_torch_compile:
         model = torch.compile(model)
@@ -517,17 +513,8 @@ def fsdp_main(args):
 
 
 if __name__ == "__main__":
-
     print(torch.__version__)
-
     args = parse_args()  # atm we don't use any args..available if needed.
-
-    # ensure your gpu node count is set via the run_training.sh file...
-    # you can un-comment below for check:
-    # gpus_per_node = torch.cuda.device_count()
-    # print(f" --> Total GPU count = {gpus_per_node}")
-
-    # torch run start
     fsdp_main(args)
 
     

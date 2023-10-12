@@ -6,7 +6,7 @@
 import os
 
 from dataclasses import dataclass
-from torch.distributed.fsdp import ShardingStrategy, BackwardPrefetch
+from torch.distributed.fsdp import ShardingStrategy
 
 
 @dataclass
@@ -20,9 +20,7 @@ class train_config:
 
     # save models
     save_model: bool = False
-    checkpoint_max_save_count: int = (
-        2  # number of 'best' checkpoints to save based on val loss
-    )
+    checkpoint_max_save_count: int = 2
 
     # compile
     use_torch_compile = os.getenv("USE_TORCH_COMPILE", "false").lower()
@@ -34,7 +32,6 @@ class train_config:
         use_orig_params = False
 
     # sharding policy
-    # sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
     sharding_strategy = os.getenv("SHARDING_STRATEGY", "fsdp").lower()
     if sharding_strategy == "fsdp":
         sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
@@ -47,16 +44,14 @@ class train_config:
     # dataloaders
     num_workers_dataloader: int = 0
 
-    # policies 
-    # mixed precision this will default to BFloat16, but if no native support detected, will 
-    # use FP16.  (note that FP16 is not recommended for larger models...)
+    # policies
     use_mixed_precision: bool = True
 
-    FSDP_activation_checkpointing: bool = False
+    FSDP_activation_checkpointing: bool = True
+    selective_checkpointing = 7
 
     # datasets
     dataset_train = "datasets_grammar/gtrain_150K.csv"
-    # dataset_train = "/workspace/data/lchu/gtrain_1M.csv"  # /workspace/data/lchu/gtrain_10M.csv, /workspace/data/lchu/gtrain_150K.csv
     dataset_test = "datasets_grammar/grammar_validation.csv"
 
     # training
