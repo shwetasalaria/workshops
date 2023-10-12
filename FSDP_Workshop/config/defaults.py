@@ -35,13 +35,11 @@ class train_config:
 
     # sharding policy
     # sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD  #FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
-    sharding_strategy = os.getenv("SHARDING_STRATEGY", "full").lower()
-    if sharding_strategy == "full":
+    sharding_strategy = os.getenv("SHARDING_STRATEGY", "fsdp").lower()
+    if sharding_strategy == "fsdp":
         sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
-    elif sharding_strategy == "grad":
-        sharding_strategy: ShardingStrategy = ShardingStrategy.SHARD_GRAD_OP
-    elif sharding_strategy == "no":
-        sharding_strategy: ShardingStrategy = ShardingStrategy.NO_SHARD
+    elif sharding_strategy == "hsdp":
+        sharding_strategy: ShardingStrategy = ShardingStrategy.HYBRID_SHARD
     else:
         sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
     print_sharding_plan: bool = False
@@ -54,7 +52,7 @@ class train_config:
     # use FP16.  (note that FP16 is not recommended for larger models...)
     use_mixed_precision: bool = True
 
-    FSDP_activation_checkpointing: bool = True
+    FSDP_activation_checkpointing: bool = False
 
     # datasets
     dataset_train = "datasets_grammar/gtrain_150K.csv"
