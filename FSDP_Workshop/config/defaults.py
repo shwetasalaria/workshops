@@ -41,6 +41,13 @@ class train_config:
         sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD
     print_sharding_plan: bool = False
 
+    # profiler trace
+    use_profiler = os.getenv("USE_PROFILER", "false").lower()
+    if use_profiler == "true":
+        use_profiler = True
+    else:
+        use_profiler = False
+
     # dataloaders
     num_workers_dataloader: int = 0
 

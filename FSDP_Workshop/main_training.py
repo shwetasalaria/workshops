@@ -408,27 +408,26 @@ def fsdp_main(args):
         dq = deque(maxlen=cfg.checkpoint_max_save_count+1)
         training_start_time = time.time()
 
-    # you can run profiling by un-commenting the below section.  Note that you will likely want to just profile
-    # for a small set and smaller model (logs get very big, very fast).
-    torch_profiler = None
-    # torch_profiler = torch.profiler.profile(
-    #     activities=[
-    #         torch.profiler.ProfilerActivity.CPU,
-    #         torch.profiler.ProfilerActivity.CUDA,
-    #     ],
-    #     schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
-    #     on_trace_ready=torch.profiler.tensorboard_trace_handler(
-    #         "profile_traces"
-    #     ),
-    #     profile_memory=True,
-    #     with_stack=False,
-    #     record_shapes=True,
-    # )
-
+    # Profiler
+    if cfg.use_profiler:
+        torch_profiler = torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                "profile_traces"
+            ),
+            profile_memory=True,
+            with_stack=False,
+            record_shapes=True,
+        )
+    else:
+        torch_profiler = None
 
     if rank == 0 and cfg.track_memory:
         mem_alloc_tracker = []
-        
 
     # -- Start Training -----
     if rank==0:
