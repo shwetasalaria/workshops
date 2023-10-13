@@ -28,6 +28,7 @@ import config
 import performance
 import policies
 import verify
+import transformers
 
 # some globals
 g_gigabyte = 1024**3
@@ -273,7 +274,11 @@ def fsdp_main(args):
 
     tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
 
-    model = llama.load_fms_llama(model_name)
+    model = transformers.LlamaForCausalLM.from_pretrained(
+        model_name, use_safetensors=True
+    )
+    model = llama.convert_hf_llama(model)
+    # model = llama.load_fms_llama(model_name)
 
     if rank == 0:
         print(f"--> Training for {model_name}")
