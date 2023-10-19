@@ -28,7 +28,7 @@ import config
 import performance
 import policies
 import verify
-import transformers
+from transformers import LlamaForCausalLM, LlamaConfig
 
 # some globals
 g_gigabyte = 1024**3
@@ -274,11 +274,20 @@ def fsdp_main(args):
 
     tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
 
-    model = transformers.LlamaForCausalLM.from_pretrained(
-        model_name, use_safetensors=True
-    )
+    if cfg.low_cpu_fsdp:
+        if rank == 0:
+            model = LlamaForCausalLM.from_pretrained(
+                model_name, use_safetensors=True
+            )
+        else:
+            llama_config = LlamaConfig.from_pretrained(model_name)
+            with torch.device("meta"):
+                model = LlamaForCausalLM(llama_config)
+    else:
+        model = LlamaForCausalLM.from_pretrained(
+            model_name, use_safetensors=True
+        )
     model = llama.convert_hf_llama(model)
-    # model = llama.load_fms_llama(model_name)
 
     if rank == 0:
         print(f"--> Training for {model_name}")
@@ -348,7 +357,10 @@ def fsdp_main(args):
         sharding_strategy=model_sharding_strategy,
         use_orig_params=cfg.use_orig_params,
         device_id=torch.cuda.current_device(),
-        limit_all_gathers=True
+        limit_all_gathers=True,
+        sync_module_states=cfg.low_cpu_fsdp,
+        param_init_fn=lambda module: module.to_empty(device=torch.device("cuda"), recurse=False)
+        if cfg.low_cpu_fsdp and rank != 0 else None,
     )
 
     # if fsdp activation checkpointing:

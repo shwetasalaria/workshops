@@ -57,6 +57,8 @@ class train_config:
     FSDP_activation_checkpointing: bool = True
     selective_checkpointing = int(os.getenv("SELECTIVE_CHECKPOINTING", "7"))
 
+    low_cpu_fsdp: bool = True
+
     # datasets
     dataset_train = "datasets_grammar/gtrain_150K.csv"
     dataset_test = "datasets_grammar/grammar_validation.csv"
