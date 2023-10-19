@@ -55,7 +55,7 @@ class train_config:
     use_mixed_precision: bool = True
 
     FSDP_activation_checkpointing: bool = True
-    selective_checkpointing = 7
+    selective_checkpointing = int(os.getenv("SELECTIVE_CHECKPOINTING", "7"))
 
     # datasets
     dataset_train = "datasets_grammar/gtrain_150K.csv"
