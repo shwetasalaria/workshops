@@ -9,7 +9,7 @@ import argparse
 import os
 import time
 from collections import deque
-from datetime import datetime
+import datetime
 
 import torch
 import torch.optim as optim
@@ -43,7 +43,7 @@ def get_date_of_run():
     """create date and time for file save uniqueness
     example: 2022-05-07-08:31:12_PM'
     """
-    date_of_run = datetime.now().strftime("%Y-%m-%d-%I:%M:%S_%p")
+    date_of_run = datetime.datetime.now().strftime("%Y-%m-%d-%I:%M:%S_%p")
     print(f"--> current date and time of run = {date_of_run}")
     return date_of_run
 
@@ -283,9 +283,10 @@ def fsdp_main(args):
                 model = LlamaForCausalLM(llama_config)
     else:
         model = LlamaForCausalLM.from_pretrained(model_name)
-    print(rank, "done1")
+    print("rank:", rank, "done1")
     model = llama.convert_hf_llama(model)
-    print(rank, "done2")
+    print("rank:", rank, "done2")
+    dist.monitored_barrier(timeout=datetime.timedelta(seconds=3600))
 
     if rank == 0:
         print(f"--> Training for {model_name}")
