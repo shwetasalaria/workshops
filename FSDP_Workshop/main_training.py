@@ -89,7 +89,7 @@ def get_policies(cfg):
 # distributed setup
 def setup(rank, world_size, cfg):
     # initialize the process group
-    dist.init_process_group("nccl")
+    dist.init_process_group("nccl", timeout=datetime.timedelta(seconds=3600))
 
 # various debug settings (show C++ stack if crash, etc.)
 def setup_environ_flags(cfg, rank):
@@ -286,7 +286,7 @@ def fsdp_main(args):
     print("rank:", rank, "done1")
     model = llama.convert_hf_llama(model)
     print("rank:", rank, "done2")
-    dist.monitored_barrier(timeout=datetime.timedelta(seconds=3600))
+    dist.barrier()
 
     if rank == 0:
         print(f"--> Training for {model_name}")
