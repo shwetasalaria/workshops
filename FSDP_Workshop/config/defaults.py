@@ -15,7 +15,7 @@ class train_config:
     seed: int = 2023
 
     # model
-    model_name = os.getenv("MODEL_NAME", "/lustre/llama_weights/7B")
+    model_name = os.getenv("MODEL_NAME", "/lustre/llama_weights/hf/7B")
     tokenizer = "/lustre/llama_weights/tokenizer.model"   # no need to adjust, tokenizer works for all model sizes
 
     # save models

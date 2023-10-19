@@ -9,7 +9,7 @@ import argparse
 import os
 import time
 from collections import deque
-import datetime
+from datetime import datetime, timedelta
 
 import torch
 import torch.optim as optim
@@ -43,7 +43,7 @@ def get_date_of_run():
     """create date and time for file save uniqueness
     example: 2022-05-07-08:31:12_PM'
     """
-    date_of_run = datetime.datetime.now().strftime("%Y-%m-%d-%I:%M:%S_%p")
+    date_of_run = datetime.now().strftime("%Y-%m-%d-%I:%M:%S_%p")
     print(f"--> current date and time of run = {date_of_run}")
     return date_of_run
 
@@ -89,7 +89,7 @@ def get_policies(cfg):
 # distributed setup
 def setup(rank, world_size, cfg):
     # initialize the process group
-    dist.init_process_group("nccl", timeout=datetime.timedelta(seconds=3600))
+    dist.init_process_group("nccl", timeout=timedelta(seconds=3600))
 
 # various debug settings (show C++ stack if crash, etc.)
 def setup_environ_flags(cfg, rank):
@@ -276,17 +276,16 @@ def fsdp_main(args):
 
     if cfg.low_cpu_fsdp:
         if rank == 0:
-            model = LlamaForCausalLM.from_pretrained(model_name)
+            model = LlamaForCausalLM.from_pretrained(model_name, use_safetensors=True)
         else:
             llama_config = LlamaConfig.from_pretrained(model_name)
             with torch.device("meta"):
                 model = LlamaForCausalLM(llama_config)
     else:
-        model = LlamaForCausalLM.from_pretrained(model_name)
+        model = LlamaForCausalLM.from_pretrained(model_name, use_safetensors=True)
     print("rank:", rank, "done1")
     model = llama.convert_hf_llama(model)
     print("rank:", rank, "done2")
-    dist.barrier()
 
     if rank == 0:
         print(f"--> Training for {model_name}")
