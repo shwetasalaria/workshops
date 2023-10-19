@@ -276,18 +276,16 @@ def fsdp_main(args):
 
     if cfg.low_cpu_fsdp:
         if rank == 0:
-            model = LlamaForCausalLM.from_pretrained(
-                model_name, use_safetensors=True
-            )
+            model = LlamaForCausalLM.from_pretrained(model_name)
         else:
             llama_config = LlamaConfig.from_pretrained(model_name)
             with torch.device("meta"):
                 model = LlamaForCausalLM(llama_config)
     else:
-        model = LlamaForCausalLM.from_pretrained(
-            model_name, use_safetensors=True
-        )
+        model = LlamaForCausalLM.from_pretrained(model_name)
+    print(rank, "done1")
     model = llama.convert_hf_llama(model)
+    print(rank, "done2")
 
     if rank == 0:
         print(f"--> Training for {model_name}")
