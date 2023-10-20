@@ -279,17 +279,17 @@ def fsdp_main(args):
         t1 = time.time()
     if cfg.low_cpu_fsdp:
         if rank == 0:
-            # model = LlamaForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True)
-            llama_config = LlamaConfig.from_pretrained(model_name)
-            with torch.device("meta"):
-                model = LlamaForCausalLM(llama_config)
-            transformers.modeling_utils.load_sharded_checkpoint(model, model_name, strict=False)
+            model = LlamaForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True)
+            # llama_config = LlamaConfig.from_pretrained(model_name)
+            # with torch.device("meta"):
+            #     model = LlamaForCausalLM(llama_config)
+            # transformers.modeling_utils.load_sharded_checkpoint(model, model_name, strict=False)
         else:
             llama_config = LlamaConfig.from_pretrained(model_name)
             with torch.device("meta"):
                 model = LlamaForCausalLM(llama_config)
     else:
-        model = LlamaForCausalLM.from_pretrained(model_name, use_safetensors=True)
+        model = LlamaForCausalLM.from_pretrained(model_name)
     if rank == 0:
         t2 = time.time()
         print("rank:", rank, "done1", "time:", t2-t1)
