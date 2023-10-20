@@ -274,6 +274,8 @@ def fsdp_main(args):
 
     tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
 
+    if rank == 0:
+        t1 = time.time()
     if cfg.low_cpu_fsdp:
         if rank == 0:
             model = LlamaForCausalLM.from_pretrained(model_name, use_safetensors=True)
@@ -283,9 +285,14 @@ def fsdp_main(args):
                 model = LlamaForCausalLM(llama_config)
     else:
         model = LlamaForCausalLM.from_pretrained(model_name, use_safetensors=True)
-    print("rank:", rank, "done1")
+    if rank == 0:
+        t2 = time.time()
+        print("rank:", rank, "done1", "time:", t2-t1)
+
     model = llama.convert_hf_llama(model)
-    print("rank:", rank, "done2")
+    if rank == 0:
+        t3 = time.time()
+        print("rank:", rank, "done2", "time:", t3-t2)
 
     if rank == 0:
         print(f"--> Training for {model_name}")
