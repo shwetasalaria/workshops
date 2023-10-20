@@ -283,7 +283,7 @@ def fsdp_main(args):
             llama_config = LlamaConfig.from_pretrained(model_name)
             with torch.device("meta"):
                 model = LlamaForCausalLM(llama_config)
-            transformers.modeling_utils.load_sharded_checkpoint(model, model_name)
+            transformers.modeling_utils.load_sharded_checkpoint(model, model_name, strict=False)
         else:
             llama_config = LlamaConfig.from_pretrained(model_name)
             with torch.device("meta"):
