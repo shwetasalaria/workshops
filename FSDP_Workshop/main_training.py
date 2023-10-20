@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import torch
 import torch.optim as optim
 import tqdm
+import transformers.modeling_utils
 from fms.datasets import instructions
 from fms.models import llama
 from fms.utils import tokenizers
@@ -278,7 +279,11 @@ def fsdp_main(args):
         t1 = time.time()
     if cfg.low_cpu_fsdp:
         if rank == 0:
-            model = LlamaForCausalLM.from_pretrained(model_name, use_safetensors=True)
+            # model = LlamaForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True)
+            llama_config = LlamaConfig.from_pretrained(model_name)
+            with torch.device("meta"):
+                model = LlamaForCausalLM(llama_config)
+            transformers.modeling_utils.load_sharded_checkpoint(model, model_name)
         else:
             llama_config = LlamaConfig.from_pretrained(model_name)
             with torch.device("meta"):
