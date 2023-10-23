@@ -279,7 +279,7 @@ def fsdp_main(args):
     if rank == 0:
         t1 = time.time()
 
-    config = LLaMAConfig(
+    llama_config = LLaMAConfig(
         kvheads=8,
         src_vocab_size=32000,
         emb_dim=8192,
@@ -294,12 +294,12 @@ def fsdp_main(args):
 
     if cfg.low_cpu_fsdp:
         if rank == 0:
-            model = LLaMA(config)
+            model = LLaMA(llama_config)
         else:
             with torch.device("meta"):
-                model = LLaMA(config)
+                model = LLaMA(llama_config)
     else:
-        model = LLaMA(config)
+        model = LLaMA(llama_config)
     if rank == 0:
         t2 = time.time()
         print("rank:", rank, "done1", "time:", t2-t1)
