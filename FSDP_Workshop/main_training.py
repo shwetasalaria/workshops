@@ -315,7 +315,7 @@ def fsdp_main(args):
     eos_token_id = tokenizer.convert_tokens_to_ids([eos_token])[0]
 
     train_dataset = instructions.JsonInstructions(
-        "/home/bvaughan/alpaca_data.json",
+        cfg.data_file,
         tokenizer=tokenizer, max_len=4096, device="cpu",
         bos_tok_id=bos_token_id, eos_tok_id=eos_token_id
     )

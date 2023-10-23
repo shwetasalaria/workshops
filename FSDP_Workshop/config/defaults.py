@@ -18,6 +18,9 @@ class train_config:
     model_name = os.getenv("MODEL_NAME", "/lustre/llama_weights/hf/7B")
     tokenizer = "/lustre/llama_weights/tokenizer.model"   # no need to adjust, tokenizer works for all model sizes
 
+    # data
+    data_file = "/home/bvaughan/alpaca_data.json"
+
     # save models
     save_model: bool = False
     checkpoint_max_save_count: int = 2

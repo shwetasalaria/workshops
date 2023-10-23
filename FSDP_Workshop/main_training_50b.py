@@ -5,94 +5,37 @@
 # LICENSE file in the root directory of this source tree.
 
 
-# main hq file for t5 training
-# general code comments added for clarity
-
-import os
 import argparse
-# our custom dataset handler class
-from datasets_grammar.grammar_dataset import grammar
+import os
+import time
+from collections import deque
+from datetime import datetime, timedelta
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-
-# for grammar correction
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-
-# for generation
-from transformers import T5Tokenizer, T5ForConditionalGeneration
-from transformers import DataCollatorForSeq2Seq
-
-import functools
-from torch.optim.lr_scheduler import StepLR
-import torch.nn.functional as F
-import torch.distributed as dist
-import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data.distributed import DistributedSampler
-
-# main FSDP imports
-from torch.distributed.fsdp import (
-    FullyShardedDataParallel as FSDP,
-    CPUOffload,
-    MixedPrecision,
-    BackwardPrefetch,
-    ShardingStrategy,
-    FullStateDictConfig,
-    StateDictType,
-)
-
-
-# wrapping policy for determining FSDP units for sharding
-from torch.distributed.fsdp.wrap import (
-    transformer_auto_wrap_policy,
-    enable_wrap,
-    wrap,
-)
-
-# control over mixed precision
-from policies import mixed_precision
-
-
-from datasets import load_dataset, load_metric
-from torch.utils.data import DataLoader
-from pathlib import Path
-from torch.utils.data import DataLoader
-
-from ChildTuningOptimizer import ChildTuningAdamW
-
-from sklearn.model_selection import train_test_split
-import time
-from datetime import datetime
-
-# local imports
-import verify
-import policies
-import model_checkpoints
-from collections import deque
-
-
-import datasets_grammar as dg
 import tqdm
-
-import performance
-
-# config
+import transformers.modeling_utils
+from fms.datasets import instructions
+from fms.models import llama
+from fms.models.llama import LLaMAConfig, LLaMA
+from fms.utils import tokenizers
+from torch import distributed as dist
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp import (
+    ShardingStrategy,
+)
+from torch.optim.lr_scheduler import StepLR
+from torch.utils.data.distributed import DistributedSampler
 import config
+import performance
+import policies
+import verify
+from transformers import LlamaForCausalLM, LlamaConfig
 
 # some globals
 g_gigabyte = 1024**3
 
 bf16_ready = verify.bf16_ready
-
-
-# wrapper to avoid cluttering with if rank==0...
-def rank_print(rank, x):
-    if rank == 0:
-        print(x)
-
 
 def _is_rank_0():
     return 0 == os.getenv("RANK")
@@ -140,7 +83,7 @@ def get_policies(cfg):
             mixed_precision_policy = policies.fpSixteen
             print(f"BFloat16 support not present. Switching to FP16 with dynamic scaling.")
 
-    wrapping_policy = policies.get_t5_wrapper()
+    wrapping_policy = policies.get_llama_wrapper()
 
     return mixed_precision_policy, wrapping_policy
 
@@ -148,7 +91,7 @@ def get_policies(cfg):
 # distributed setup
 def setup(rank, world_size, cfg):
     # initialize the process group
-    dist.init_process_group("nccl")
+    dist.init_process_group("nccl", timeout=timedelta(seconds=3600))
 
 # various debug settings (show C++ stack if crash, etc.)
 def setup_environ_flags(cfg, rank):
@@ -205,45 +148,43 @@ def train(
 
     if sampler:
         sampler.set_epoch(epoch)
-    if rank == 0:
-        inner_pbar = tqdm.tqdm(
-            range(len(train_loader)), colour="blue", desc="Training Epoch"
-        )
-    for batch in train_loader:
-        for key in batch.keys():
-            batch[key] = batch[key].to(local_rank)
+    start = time.time()
+    loop_start = time.time()
+    for batch_idx, (input, label) in enumerate(train_loader, start=1):
+        input = input.to(local_rank)
+        label = label.to(local_rank)
 
         optimizer.zero_grad()
-        output = model(
-            input_ids=batch["source_ids"],
-            attention_mask=batch["source_mask"],
-            labels=batch["target_ids"],
-        )
-
-        loss = output["loss"]
+        output = model(input)
+        ce_loss = torch.nn.CrossEntropyLoss()
+        loss = ce_loss(output.transpose(-1, -2), label)
 
         if scaler:
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()  # adjust scaling for next minibatch
-        else:   
+        else:
             loss.backward()
             optimizer.step()
 
         ddp_loss[0] += loss.item()
         ddp_loss[1] += 1
 
-        if rank == 0:
-            inner_pbar.update(1)
         if profiler:
             profiler.step()
+
+        if batch_idx % 200 == 0:
+            elapsed_time = time.time() - loop_start
+            if rank == 0:
+                print("step:", batch_idx)
+                print("avg speed for these 200 steps", (time.time() - start) / 200)
+                print("overall speed: ", elapsed_time / batch_idx)
+            start = time.time()
 
     # consolidate final loss number - do not use .reduce here, requires global synch
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     train_accuracy = ddp_loss[0] / ddp_loss[1]
     if rank == 0:
-        inner_pbar.close()
-
         print(f"Train Epoch: \t{epoch}, Loss: \t{train_accuracy:.4f}")
     return train_accuracy
 
@@ -327,24 +268,41 @@ def fsdp_main(args):
         if rank==0:
             print(f"--> FP16 implemented for mixed precision support.")
 
-    model_name = cfg.model_name  # "google/t5-v1_1-small"
+    model_name = cfg.model_name
     if rank == 0:
         print(f"--> training for model {model_name}")
 
     printable_model_name = str.replace(model_name, "/", "=")
-    file_save_name = "ModelCheckPoint-"  # printable_model_name + "-"
 
-    # t5-base
-    # google/t5-v1_1-small
-    # google/t5-v1_1-base
-    # google/t5-v1_1-large
-    # google/t5-v1_1-xl  #3b
-    # google/t5-v1_1-xxl #11b
+    tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
 
-    # grammar correction setup - uses HF tokenizer and wrapped T5 model
-    tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer, model_max_length=512)
+    if rank == 0:
+        t1 = time.time()
 
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, use_cache=False)
+    config = LLaMAConfig(
+        kvheads=8,
+        src_vocab_size=32000,
+        emb_dim=8192,
+        norm_eps=1e-05,
+        nheads=64,
+        nlayers=80,
+        hidden_grow_factor=3.5,
+        multiple_of=1,  # this is set to 1 as it is encoded in the hidden dimension
+        activation_fn="silu",
+        max_expected_seq_len=2048,
+    )
+
+    if cfg.low_cpu_fsdp:
+        if rank == 0:
+            model = LLaMA(config)
+        else:
+            with torch.device("meta"):
+                model = LLaMA(config)
+    else:
+        model = LLaMA(config)
+    if rank == 0:
+        t2 = time.time()
+        print("rank:", rank, "done1", "time:", t2-t1)
 
     if rank == 0:
         print(f"--> Training for {model_name}")
@@ -356,13 +314,21 @@ def fsdp_main(args):
     if cfg.dataset_train:
         train_name = cfg.dataset_train
 
-    train_dataset = dg.get_dataset(tokenizer, train_name, 512, 512, True)
+    bos_token = '<s>'  # for char tokenizer should be 2 and 3. TODO add to tokenizer?
+    eos_token = '</s>'
+    bos_token_id = tokenizer.convert_tokens_to_ids([bos_token])[0]
+    eos_token_id = tokenizer.convert_tokens_to_ids([eos_token])[0]
+
+    train_dataset = instructions.JsonInstructions(
+        cfg.data_file,
+        tokenizer=tokenizer, max_len=4096, device="cpu",
+        bos_tok_id=bos_token_id, eos_tok_id=eos_token_id
+    )
     if 0 == os.getenv("RANK"):
         print(f"--> Training Set Len = {len(train_dataset)}")
         print(f"using dataset {train_name}")
-    
 
-    val_dataset = dg.get_dataset(tokenizer, cfg.dataset_test, 512, 512, True)
+    val_dataset = train_dataset
     if 0 == os.getenv("RANK"):
         print(f"--> Validation set len = {len(val_dataset)}")
         print(f"using dataset {cfg.dataset_test}")
@@ -391,120 +357,36 @@ def fsdp_main(args):
     
     clear_gpu_cache(local_rank)
 
-    # HF checkpointing...
-    if cfg.HF_activation_checkpointing:
-        model.gradient_checkpointing_enable()
-        print(f"HF Activation checkpointing enabled\n")
-
     # --- sharding policy
     model_sharding_strategy = (
         cfg.sharding_strategy or ShardingStrategy.FULL_SHARD
     )  # use config, but default to normal if not available
     if rank == 0:
         print(f"Sharding strategy = {model_sharding_strategy}")
-
-    # --- cpu offload
-    cpu_offload = cfg.cpu_offload or False
-
-    # --- backward prefetch
-    model_backward_prefetch = (
-        cfg.backward_prefetch or None
-    )  # use config, but default to None (i.e. default) if not available
-    if rank == 0:
-        print(f"Backward prefetch = {model_backward_prefetch}")
-
-
     
-    # Main FSDP call - this inits FSDP with our model and FSDP will create the sharding plan
-    # and stream the shards to each GPU.
-    # we also pass in our mixed precision policy here
-
-    print(f"Tensor Parallel activated - init start\n")
-
-    from torch.distributed.tensor.parallel.fsdp import enable_2d_with_fsdp
-
-    TP_AVAILABLE = False
-    try:
-        from torch.distributed._tensor import (
-            DeviceMesh,
-        )
-        from torch.distributed.tensor.parallel import (
-            PairwiseParallel,
-            parallelize_module,
-            # get_parallelization_fqn,
-        )
-
-        # need to setup hooks for TP
-
-        fsdp_is_available = enable_2d_with_fsdp()
-
-        TP_AVAILABLE = fsdp_is_available
-
-    except BaseException as e:
-        print(f"Exception during TP init - {e=}\n")
-        pass
-
-    assert TP_AVAILABLE, f"fsdp did not init"
-    print(f"tp_initialized - rank {rank}\n")
-
-    # Init TP
-    _tp = int(os.environ.get("RANK", -1)) != -1  # verify distributed run
-
-    assert (
-            _tp and TP_AVAILABLE
-    ), "this config assumes setup for Tensor Parallel - distributed not ready here."
-
-    # rank_print(f"TP is available = {TP_AVAILABLE}\n")
-    model_parallel_size = 2
-
-    # 2-D mesh is [dp, tp]
-    twod_mesh = DeviceMesh(
-        device_type="cuda",
-        mesh=torch.arange(0, world_size).view(model_parallel_size, -1),
+    # Main FSDP call
+    model = FSDP(
+        model,
+        auto_wrap_policy=wrapping_policy,
+        mixed_precision=mp_policy,
+        sharding_strategy=model_sharding_strategy,
+        use_orig_params=cfg.use_orig_params,
+        device_id=torch.cuda.current_device(),
+        limit_all_gathers=True,
+        sync_module_states=cfg.low_cpu_fsdp,
+        param_init_fn=lambda module: module.to_empty(device=torch.device("cuda"), recurse=False)
+        if cfg.low_cpu_fsdp and rank != 0 else None,
     )
-    rank_print(rank, f"{twod_mesh=}")
 
-    for i in range(24):
-        encoder_block = model.get_submodule(f"encoder.block.{i}")
-        parallelized_encoder_block = parallelize_module(
-            module=encoder_block,
-            device_mesh=twod_mesh,
-            parallelize_plan={
-                "layer.0.SelfAttention": PairwiseParallel(),
-                "layer.1.DenseReluDense": PairwiseParallel(),
-            },
-            tp_mesh_dim=1,
-        )
-        encoder_block = parallelized_encoder_block
-        decoder_block = model.get_submodule(f"decoder.block.{i}")
-        parallelized_decoder_block = parallelize_module(
-            module=decoder_block,
-            device_mesh=twod_mesh,
-            parallelize_plan={
-                "layer.0.SelfAttention": PairwiseParallel(),
-                "layer.1.EncDecAttention": PairwiseParallel(),
-                "layer.2.DenseReluDense": PairwiseParallel(),
-            },
-            tp_mesh_dim=1,
-        )
-        decoder_block = parallelized_decoder_block
+    # if fsdp activation checkpointing:
+    if cfg.FSDP_activation_checkpointing:
+        import activation_checkpointing as ac
+        ac.apply_fsdp_checkpointing(model, cfg.selective_checkpointing)
 
-    fsdp_pg = twod_mesh.get_dim_groups()[0]
-
-    device = "cuda"
-    model.to(device)
-    model = FSDP(model, process_group=fsdp_pg)
-
-    # # if fsdp activation checkpointing:
-    # if cfg.FSDP_activation_checkpointing:
-    #     import activation_checkpointing as ac
-    #     ac.apply_fsdp_checkpointing(model)
-    #
-    #     # confirm we are not double checkpointing
-    #     if cfg.HF_activation_checkpointing:
-    #         print(f"cannot run with both HF and FSDP checkpointing.  Please check config..aborting")
-    #         return
-
+    if cfg.use_torch_compile:
+        model = torch.compile(model)
+        if rank == 0:
+            print("######### Compile is being use ###############")
     
     #optional - you can print the sharding plan to see how FSDP has structured the layout.
     if rank == 0 and cfg.print_sharding_plan:
@@ -528,24 +410,9 @@ def fsdp_main(args):
     lr = cfg.learning_rate
     gamma = 0.85
 
-    # we can train with either ChildTuning (recommended) or whole model fine tuning.
-    if cfg.use_child_tuning:
-        if cfg.use_task_free:
-            optimizer = ChildTuningAdamW(
-                model.parameters(),
-                lr=lr,
-                weight_decay=0.01,
-                reserve_p=cfg.percent_F,
-                mode="taskfree",
-            )
-            if rank==0:
-                print(
-                f"--> Optimizer - Child Task Free tuning with {cfg.percent_F} percentage and lr of {lr} "
-            )
-    else:
-        optimizer = optim.AdamW(model.parameters(), lr=lr)
-        if rank==0:
-            print(f"--> AdamW whole model tuning with lr of {lr} ")
+    optimizer = optim.AdamW(model.parameters(), lr=lr)
+    if rank==0:
+        print(f"--> AdamW whole model tuning with lr of {lr} ")
 
     scheduler = StepLR(optimizer, step_size=1, gamma=gamma)
     epochs = cfg.num_epochs
@@ -568,27 +435,26 @@ def fsdp_main(args):
         dq = deque(maxlen=cfg.checkpoint_max_save_count+1)
         training_start_time = time.time()
 
-    # you can run profiling by un-commenting the below section.  Note that you will likely want to just profile
-    # for a small set and smaller model (logs get very big, very fast).
-    torch_profiler = None
-    torch_profiler = torch.profiler.profile(
-        activities=[
-            torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.CUDA,
-        ],
-        schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(
-            "profile_traces"
-        ),
-        profile_memory=True,
-        with_stack=False,
-        record_shapes=True,
-    )
-
+    # Profiler
+    if cfg.use_profiler:
+        torch_profiler = torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                "profile_traces"
+            ),
+            profile_memory=True,
+            with_stack=False,
+            record_shapes=True,
+        )
+    else:
+        torch_profiler = None
 
     if rank == 0 and cfg.track_memory:
         mem_alloc_tracker = []
-        
 
     # -- Start Training -----
     if rank==0:
@@ -634,37 +500,6 @@ def fsdp_main(args):
                     format_metrics_to_gb(torch.cuda.memory_allocated())
                 )
 
-        # save this epochs checkpoint if val loss is current best
-        if cfg.save_model and curr_val_loss < best_val_loss:
-            # update curr best val accuracy
-
-            # save
-            if rank == 0:
-                print(f"--> entering save model state...")
-            save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-            with FSDP.state_dict_type(
-                model, StateDictType.FULL_STATE_DICT, save_policy
-            ):
-                cpu_state = model.state_dict()
-            # states = model.state_dict()
-            print(f"saving process: rank {rank}  done w state_dict")
-            # dist.barrier()
-            # print(f"rank {rank}  done w 2nd barrier")
-
-            if rank == 0:
-                print(f"--> saving model ...")
-                currEpoch = (
-                    "-" + str(epoch) + "-" + str(round(curr_val_loss.item(), 4)) + ".pt"
-                )
-                save_name = file_save_name + "-" + time_of_run + "-" + currEpoch
-
-                torch.save(cpu_state, save_name)
-
-                print(f"--> saved {save_name} to disk")
-                dq.append(save_name)
-                # only keep a rolling number of model files to avoid excessive disk space use
-                model_checkpoints.prune_checkpoints(rank, dq, cfg)
-                
 
         # announce new val loss record:
         if rank == 0 and curr_val_loss < best_val_loss:
@@ -709,15 +544,8 @@ def fsdp_main(args):
 
 
 if __name__ == "__main__":
-
+    print(torch.__version__)
     args = parse_args()  # atm we don't use any args..available if needed.
-
-    # ensure your gpu node count is set via the run_training.sh file...
-    # you can un-comment below for check:
-    # gpus_per_node = torch.cuda.device_count()
-    # print(f" --> Total GPU count = {gpus_per_node}")
-
-    # torch run start
     fsdp_main(args)
 
     
