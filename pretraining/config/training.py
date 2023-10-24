@@ -23,7 +23,7 @@ class train_config:
     # profiler
     use_profiler = False
 
-    # fsdp
+    ### fsdp policies
     mixed_precision: bool = True
 
     fsdp_activation_checkpointing: bool = True
