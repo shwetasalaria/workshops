@@ -299,7 +299,7 @@ def fsdp_main(args):
         norm_eps=1e-05,
         nheads=60,
         nlayers=72,
-        hidden_grow_factor=3.5,
+        hidden_grow_factor=3,
         multiple_of=1,  # this is set to 1 as it is encoded in the hidden dimension
         activation_fn="silu",
         max_expected_seq_len=4096,
