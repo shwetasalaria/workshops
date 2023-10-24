@@ -293,7 +293,7 @@ def fsdp_main(args):
     # )
 
     llama_config = LLaMAConfig(
-        kvheads=8,
+        kvheads=15,
         src_vocab_size=32000,
         emb_dim=7680,
         norm_eps=1e-05,
