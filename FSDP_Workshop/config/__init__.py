@@ -1,2 +1,1 @@
-from .defaults import train_config
-from .benchmark import benchmark_config
+from .training import train_config

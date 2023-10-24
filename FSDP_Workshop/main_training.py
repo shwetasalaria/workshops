@@ -1,146 +1,36 @@
-# Copyright (c) 2022 Meta Platforms, Inc. and its affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the Apache-style license found in the
-# LICENSE file in the root directory of this source tree.
-
-
-import argparse
 import os
 import time
-from collections import deque
-from datetime import datetime, timedelta
 
 import torch
 import torch.optim as optim
 import tqdm
-import transformers.modeling_utils
 from fms.datasets import instructions
 from fms.models import llama
 from fms.utils import tokenizers
 from torch import distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp import (
-    ShardingStrategy,
-)
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data.distributed import DistributedSampler
 import config
-import performance
+from utils.config_utils import update_config
+from utils.train_utils import setup, setup_environ_flags, get_policies
 import policies
-import verify
 from transformers import LlamaForCausalLM, LlamaConfig
 
-# some globals
-g_gigabyte = 1024**3
 
-bf16_ready = verify.bf16_ready
-
-def _is_rank_0():
-    return 0 == os.getenv("RANK")
-
-
-def get_date_of_run():
-    """create date and time for file save uniqueness
-    example: 2022-05-07-08:31:12_PM'
-    """
-    date_of_run = datetime.now().strftime("%Y-%m-%d-%I:%M:%S_%p")
-    print(f"--> current date and time of run = {date_of_run}")
-    return date_of_run
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="PyTorch fsdp T5.11 Example")
-    """parser.add_argument("--save-dir", default="/model_chkpt", type=str)
-    parser.add_argument(
-        "--save-model",
-        action="store_true",
-        default=False,
-        help="For Saving the current Model",
-    )
-    """
-
-    args = parser.parse_args()
-    return args
-
-
-# ----------------   Main functions --------------------
-def get_policies(cfg):
-
-    """establish current policies for mixed precision and fsdp wrapping"""
-
-    mixed_precision_policy = None
-    wrapping_policy = None
-
-    # mixed precision -----
-    if cfg.use_mixed_precision:
-
-        if bf16_ready:
-            mixed_precision_policy = policies.bfSixteen
-            print(f"BFloat16 enabled for mixed precision - using bfSixteen policy")
-        else:
-            mixed_precision_policy = policies.fpSixteen
-            print(f"BFloat16 support not present. Switching to FP16 with dynamic scaling.")
-
-    wrapping_policy = policies.get_llama_wrapper()
-
-    return mixed_precision_policy, wrapping_policy
-
-
-# distributed setup
-def setup(rank, world_size, cfg):
-    # initialize the process group
-    dist.init_process_group("nccl", timeout=timedelta(seconds=3600))
-
-# various debug settings (show C++ stack if crash, etc.)
-def setup_environ_flags(cfg, rank):
-    os.environ["TORCH_SHOW_CPP_STACKTRACES"] = str(1)
-    if cfg.nccl_debug_handler:
-        os.environ["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
-    if cfg.distributed_debug:
-        os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
-        if rank == 0:
-            print(f"--> running with torch dist debug set to detail")
-
-
-def cleanup():
-    dist.destroy_process_group()
-
-
-def clear_gpu_cache(rank=None):
-    print(f"clearing cache for rank {rank}")
-    torch.cuda.empty_cache()
-
-
-def setup_tasks(rank, world_size, cfg):
-    """keep the basic setup list here"""
-    setup(rank, world_size, cfg)
-    # clear_gpu_cache() - need to call torch set device first?
-    # set_printing()
-    setup_environ_flags(cfg, rank)
-
-
-def format_metrics_to_gb(item):
-    """quick function to format numbers to gigabyte and round to 4 digit precision"""
-    metric_num = item / g_gigabyte
-    metric_num = round(metric_num, ndigits=4)
-    return metric_num
-
+import fire
 
 # ----------  Training ----------------------------------------------------------
 # our train function, called per epoch
 def train(
-    args,
     model,
     local_rank,
     rank,
-    world_size,
     train_loader,
     optimizer,
     epoch,
     sampler=None,
     profiler=None,
-    scaler=None,
 ):
     model.train()
     ddp_loss = torch.zeros(2).to(local_rank)
@@ -158,13 +48,8 @@ def train(
         ce_loss = torch.nn.CrossEntropyLoss()
         loss = ce_loss(output.transpose(-1, -2), label)
 
-        if scaler:
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()  # adjust scaling for next minibatch
-        else:
-            loss.backward()
-            optimizer.step()
+        loss.backward()
+        optimizer.step()
 
         ddp_loss[0] += loss.item()
         ddp_loss[1] += 1
@@ -176,9 +61,12 @@ def train(
             elapsed_time = time.time() - loop_start
             if rank == 0:
                 print("step:", batch_idx)
-                print("avg speed for these 200 steps", (time.time() - start) / 200)
-                print("overall speed: ", elapsed_time / batch_idx)
+                print("avg speed for these 200 steps:", (time.time() - start) / 200)
+                print("overall speed:", elapsed_time / batch_idx)
+                print("reserved memory:", torch.cuda.max_memory_reserved(device=torch.cuda.current_device()))
+                print("active memory:", torch.cuda.max_memory_allocated(device=torch.cuda.current_device()))
             start = time.time()
+        torch.cuda.reset_peak_memory_stats(device=torch.cuda.current_device())
 
     # consolidate final loss number - do not use .reduce here, requires global synch
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
@@ -193,7 +81,6 @@ def train(
 
 def validation(model, local_rank, rank, world_size, test_loader):
     model.eval()
-    correct = 0
     ddp_loss = torch.zeros(3).to(local_rank)
     if rank == 0:
         inner_pbar = tqdm.tqdm(
@@ -223,14 +110,10 @@ def validation(model, local_rank, rank, world_size, test_loader):
     return val_loss
 
 
-# ---- fsdp main ------------------------------------------------------------
+def main(**kwargs):
+    cfg = config.train_config()
 
-
-def fsdp_main(args):
-
-    """main process, run within each individual GPU process"""
-
-    cfg = config.train_config()  # loads from defaults
+    update_config(cfg, **kwargs)
 
     # ensure reproducibility
     torch.cuda.manual_seed(cfg.seed)
@@ -242,36 +125,15 @@ def fsdp_main(args):
     world_size = int(os.environ["WORLD_SIZE"])
 
     if rank == 0:
-        print(f"--> running with these defaults {cfg}")
-        time_of_run = get_date_of_run()
+        print(f"--> running with these configs {cfg}")
 
-    setup_tasks(rank, world_size, cfg)
+    setup()
 
-    # fsdp_unit_params = cfg.fsdp_unit_size  
+    torch.cuda.set_device(local_rank)
+    torch.cuda.empty_cache()
+    setup_environ_flags()
 
-    batch_size = cfg.batch_size
-    if rank == 0:
-        print(f"\n BatchSize = {batch_size}\n")
-
-    val_batch_size = cfg.val_batch_size
-
-    mp_policy, wrapping_policy = get_policies(cfg)
-    
-    scaler=None
-
-    if cfg.use_mixed_precision and not bf16_ready:
-        # we'll switch to fp16 for V100 etc where BFloat is not supported but user wants mixed precision
-        from torch.distributed.fsdp.sharded_grad_scaler import ShardedGradScaler
-
-        scaler = ShardedGradScaler()
-        if rank==0:
-            print(f"--> FP16 implemented for mixed precision support.")
-
-    model_name = cfg.model_name
-    if rank == 0:
-        print(f"--> training for model {model_name}")
-
-    printable_model_name = str.replace(model_name, "/", "=")
+    mixed_precision_policy, wrapping_policy, sharding_strategy_policy = get_policies(cfg, rank)
 
     tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
 
@@ -279,37 +141,30 @@ def fsdp_main(args):
         t1 = time.time()
     if cfg.low_cpu_fsdp:
         if rank == 0:
-            model = LlamaForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True)
-            # llama_config = LlamaConfig.from_pretrained(model_name)
-            # with torch.device("meta"):
-            #     model = LlamaForCausalLM(llama_config)
-            # transformers.modeling_utils.load_sharded_checkpoint(model, model_name, strict=False)
+            model = LlamaForCausalLM.from_pretrained(cfg.model_name, low_cpu_mem_usage=True)
         else:
-            llama_config = LlamaConfig.from_pretrained(model_name)
+            llama_config = LlamaConfig.from_pretrained(cfg.model_name)
             with torch.device("meta"):
                 model = LlamaForCausalLM(llama_config)
     else:
-        model = LlamaForCausalLM.from_pretrained(model_name)
+        model = LlamaForCausalLM.from_pretrained(cfg.model_name)
     if rank == 0:
         t2 = time.time()
-        print("rank:", rank, "done1", "time:", t2-t1)
+        print("rank:", rank, "hf model loaded.", "time:", t2-t1)
 
     model = llama.convert_hf_llama(model)
     if rank == 0:
         t3 = time.time()
-        print("rank:", rank, "done2", "time:", t3-t2)
+        print("rank:", rank, "fms model converted.", "time:", t3-t2)
 
     if rank == 0:
-        print(f"--> Training for {model_name}")
+        print(f"--> Training for {cfg.model_name}")
         total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"\n--> {model_name} has {total_params/1e6} Million params\n")
+        print(f"\n--> {cfg.model_name} has {total_params/1e6} Million params\n")
 
     # ____________ create batch dataset
-    train_name = None
-    if cfg.dataset_train:
-        train_name = cfg.dataset_train
 
-    bos_token = '<s>'  # for char tokenizer should be 2 and 3. TODO add to tokenizer?
+    bos_token = '<s>'
     eos_token = '</s>'
     bos_token_id = tokenizer.convert_tokens_to_ids([bos_token])[0]
     eos_token_id = tokenizer.convert_tokens_to_ids([eos_token])[0]
@@ -321,22 +176,19 @@ def fsdp_main(args):
     )
     if 0 == os.getenv("RANK"):
         print(f"--> Training Set Len = {len(train_dataset)}")
-        print(f"using dataset {train_name}")
+        print(f"using dataset {cfg.data_file}")
 
     val_dataset = train_dataset
     if 0 == os.getenv("RANK"):
         print(f"--> Validation set len = {len(val_dataset)}")
-        print(f"using dataset {cfg.dataset_test}")
 
     sampler1 = DistributedSampler(
         train_dataset, rank=rank, num_replicas=world_size, shuffle=True
     )
     sampler2 = DistributedSampler(val_dataset, rank=rank, num_replicas=world_size)
 
-    print(f"batch size = {batch_size}")
-
-    train_kwargs = {"batch_size": batch_size, "sampler": sampler1}
-    test_kwargs = {"batch_size": val_batch_size, "sampler": sampler2}
+    train_kwargs = {"batch_size": cfg.batch_size, "sampler": sampler1}
+    test_kwargs = {"batch_size": cfg.val_batch_size, "sampler": sampler2}
     cuda_kwargs = {
         "num_workers": cfg.num_workers_dataloader,
         "pin_memory": False,
@@ -346,26 +198,14 @@ def fsdp_main(args):
     test_kwargs.update(cuda_kwargs)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, **train_kwargs)
-    test_loader = torch.utils.data.DataLoader(val_dataset, **test_kwargs)
 
-    torch.cuda.set_device(local_rank)
-    
-    clear_gpu_cache(local_rank)
-
-    # --- sharding policy
-    model_sharding_strategy = (
-        cfg.sharding_strategy or ShardingStrategy.FULL_SHARD
-    )  # use config, but default to normal if not available
-    if rank == 0:
-        print(f"Sharding strategy = {model_sharding_strategy}")
-    
     # Main FSDP call
     model = FSDP(
         model,
         auto_wrap_policy=wrapping_policy,
-        mixed_precision=mp_policy,
-        sharding_strategy=model_sharding_strategy,
-        use_orig_params=cfg.use_orig_params,
+        mixed_precision=mixed_precision_policy,
+        sharding_strategy=sharding_strategy_policy,
+        use_orig_params=cfg.use_torch_compile,
         device_id=torch.cuda.current_device(),
         limit_all_gathers=True,
         sync_module_states=cfg.low_cpu_fsdp,
@@ -374,33 +214,11 @@ def fsdp_main(args):
     )
 
     # if fsdp activation checkpointing:
-    if cfg.FSDP_activation_checkpointing:
-        import activation_checkpointing as ac
-        ac.apply_fsdp_checkpointing(model, cfg.selective_checkpointing)
+    if cfg.fsdp_activation_checkpointing:
+        policies.apply_fsdp_checkpointing(model, cfg.selective_checkpointing)
 
     if cfg.use_torch_compile:
-        model = torch.compile(model)
-        if rank == 0:
-            print("######### Compile is being use ###############")
-    
-    #optional - you can print the sharding plan to see how FSDP has structured the layout.
-    if rank == 0 and cfg.print_sharding_plan:
-        print(f"model ")
-        fn = printable_model_name + "-sharded_layout.txt"
-        with open(fn, "w") as external_file:
-            header_text = (
-                f"model = {model_name}\n"
-            )
-            print(header_text, file=external_file)
-            total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            milli_params = total_params * 4 / 1e6
-            print(
-                f"\n--> {model_name} has {milli_params} Million params\n",
-                file=external_file,
-            )
-            print(f"model wrapping = \n{model}\n\n", file=external_file)
-
-            external_file.close()
+        print("compile not supported yet for llama")
 
     lr = cfg.learning_rate
     gamma = 0.85
@@ -414,22 +232,7 @@ def fsdp_main(args):
     if rank == 0:
         print(f"Training for {epochs} epochs")
 
-    best_train_accuracy = float("-inf")
-    best_val_loss = float("inf")
-    curr_val_loss = float("inf")
-
-    # will hold our performance timer
-    memmax = None
-
     # --- main training loop 
-    if rank == 0:
-        memmax = performance.Memory_Maximizer()
-        dur = []
-        train_acc_tracking = []
-        val_acc_tracking = []
-        dq = deque(maxlen=cfg.checkpoint_max_save_count+1)
-        training_start_time = time.time()
-
     # Profiler
     if cfg.use_profiler:
         torch_profiler = torch.profiler.profile(
@@ -448,91 +251,24 @@ def fsdp_main(args):
     else:
         torch_profiler = None
 
-    if rank == 0 and cfg.track_memory:
-        mem_alloc_tracker = []
-
-    # -- Start Training -----
-    if rank==0:
-        memmax.start()
-
     for epoch in range(1, epochs + 1):
         if rank == 0:
             print(f"\n--> Starting Epoch {epoch}")
 
-            t0 = time.time()
-        train_accuracy = train(
-            args,
+        train(
             model,
             local_rank,
             rank,
-            world_size,
             train_loader,
             optimizer,
             epoch,
             sampler=sampler1,
             profiler=torch_profiler,
-            scaler=scaler,
         )
-        if rank==0:
-            memmax.update()
-
-        if cfg.run_validation:
-            curr_val_loss = validation(model, local_rank, rank, world_size, test_loader)
-
         scheduler.step()
 
-        if rank == 0:
-            print(f"--> epoch {epoch} completed...entering save and stats zone")
-
-            dur.append(time.time() - t0)
-            train_acc_tracking.append(train_accuracy.item())
-
-            if cfg.run_validation:
-                val_acc_tracking.append(curr_val_loss.item())
-
-            if cfg.track_memory:
-                mem_alloc_tracker.append(
-                    format_metrics_to_gb(torch.cuda.memory_allocated())
-                )
-
-
-        # announce new val loss record:
-        if rank == 0 and curr_val_loss < best_val_loss:
-
-            best_val_loss = curr_val_loss
-            print(f"-->>>> New Val Loss Record: {best_val_loss}")
-
-    # init_end_event.record()
-    if rank == 0:
-        
-        total_training_time = time.time() - training_start_time
-        print(f"Total training time = {total_training_time:.2f}")
-        print("Times per epoch:")
-        for i, val in enumerate(dur):
-            print(f"epoch {i}, time {val:.2f}")
-        print()
-
-        # training is done...show some training stats for memory use.
-        # memory
-        memmax.stop()
-
-        if cfg.track_memory:
-            print(f"total memory allocated: {mem_alloc_tracker}")
-
-        print(f"Training accuracy: {train_acc_tracking}")
-        if cfg.run_validation:
-            print(f"Validation accuracy: {val_acc_tracking}") 
-            print(f"\n Best Val accuracy: {best_val_loss}")
-
-        # memory summary
-        if cfg.memory_report and rank == 0:
-            print(
-                f"CUDA Memory Summary After Last training:\n {torch.cuda.memory_summary()}"
-            )
-        
-    # all done, set barrier to ensure all GPU's complete, and then cleanup 
     dist.barrier()
-    cleanup()
+    dist.destroy_process_group()
 
 
 # ------------------ Main functions above ------------
@@ -540,7 +276,5 @@ def fsdp_main(args):
 
 if __name__ == "__main__":
     print(torch.__version__)
-    args = parse_args()  # atm we don't use any args..available if needed.
-    fsdp_main(args)
-
+    fire.Fire(main)
     
