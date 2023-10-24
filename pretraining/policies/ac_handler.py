@@ -14,7 +14,6 @@ non_reentrant_wrapper = partial(
 
 
 def apply_fsdp_checkpointing(model, every_xth_item):
-    print(f"--> applying FSDP activation checkpointing...")
 
     def selective_checkpointing(submodule):
         selective_checkpointing.__dict__.setdefault("_count", 0)

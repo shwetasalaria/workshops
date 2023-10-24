@@ -1,9 +1,9 @@
 import os
 import time
 
+import fire
 import torch
 import torch.optim as optim
-import tqdm
 from fms.datasets import instructions
 from fms.models import llama
 from fms.utils import tokenizers
@@ -11,18 +11,18 @@ from torch import distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data.distributed import DistributedSampler
-import config
-from utils.config_utils import update_config
-from utils.train_utils import setup, setup_environ_flags, get_policies
-import policies
 from transformers import LlamaForCausalLM, LlamaConfig
 
+import config
+import policies
+from utils.config_utils import update_config
+from utils.train_utils import setup, setup_environ_flags, get_policies
 
-import fire
 
 # ----------  Training ----------------------------------------------------------
 # our train function, called per epoch
 def train(
+    cfg,
     model,
     local_rank,
     rank,
@@ -59,12 +59,16 @@ def train(
 
         if batch_idx % 200 == 0:
             elapsed_time = time.time() - loop_start
+            world_size = int(os.environ["WORLD_SIZE"])
+            elapsed_tokens = batch_idx * world_size * cfg.batch_size
             if rank == 0:
                 print("step:", batch_idx)
                 print("avg speed for these 200 steps:", (time.time() - start) / 200)
                 print("overall speed:", elapsed_time / batch_idx)
                 print("reserved memory:", torch.cuda.max_memory_reserved(device=torch.cuda.current_device()))
                 print("active memory:", torch.cuda.max_memory_allocated(device=torch.cuda.current_device()))
+                print("overall token per gpu per sec:", int(elapsed_tokens / world_size / elapsed_time))
+                print("token per day:", int(elapsed_tokens / elapsed_time * 3600 * 24))
             start = time.time()
         torch.cuda.reset_peak_memory_stats(device=torch.cuda.current_device())
 
@@ -76,43 +80,10 @@ def train(
     return train_accuracy
 
 
-# ---- Validation ---------------
-# validation function for one epoch of validation
-
-def validation(model, local_rank, rank, world_size, test_loader):
-    model.eval()
-    ddp_loss = torch.zeros(3).to(local_rank)
-    if rank == 0:
-        inner_pbar = tqdm.tqdm(
-            range(len(test_loader)), colour="green", desc="Validation Epoch"
-        )
-    with torch.no_grad():
-        for batch in test_loader:
-            for key in batch.keys():
-                batch[key] = batch[key].to(local_rank)
-            output = model(
-                input_ids=batch["source_ids"],
-                attention_mask=batch["source_mask"],
-                labels=batch["target_ids"],
-            )
-            ddp_loss[0] += output["loss"].item()  # sum up batch loss
-            ddp_loss[1] += 1
-
-            if rank == 0:
-                inner_pbar.update(1)
-
-    dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
-    val_loss = ddp_loss[0] / ddp_loss[1]
-
-    if rank == 0:
-        inner_pbar.close()
-        print(f"Validation Loss: {val_loss:.4f}")
-    return val_loss
-
-
 def main(**kwargs):
-    cfg = config.train_config()
 
+    # get configs
+    cfg = config.train_config()
     update_config(cfg, **kwargs)
 
     # ensure reproducibility
@@ -127,16 +98,16 @@ def main(**kwargs):
     if rank == 0:
         print(f"--> running with these configs {cfg}")
 
+    # some setups
     setup()
-
     torch.cuda.set_device(local_rank)
     torch.cuda.empty_cache()
     setup_environ_flags()
 
+    # get policy
     mixed_precision_policy, wrapping_policy, sharding_strategy_policy = get_policies(cfg, rank)
 
-    tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
-
+    # get hf model
     if rank == 0:
         t1 = time.time()
     if cfg.low_cpu_fsdp:
@@ -152,6 +123,7 @@ def main(**kwargs):
         t2 = time.time()
         print("rank:", rank, "hf model loaded.", "time:", t2-t1)
 
+    # get fms model
     model = llama.convert_hf_llama(model)
     if rank == 0:
         t3 = time.time()
@@ -161,6 +133,9 @@ def main(**kwargs):
         print(f"--> Training for {cfg.model_name}")
         total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"\n--> {cfg.model_name} has {total_params/1e6} Million params\n")
+
+    # get tokenizer
+    tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
 
     # ____________ create batch dataset
 
@@ -215,6 +190,8 @@ def main(**kwargs):
 
     # if fsdp activation checkpointing:
     if cfg.fsdp_activation_checkpointing:
+        if rank == 0:
+            print(f"--> applying FSDP activation checkpointing...")
         policies.apply_fsdp_checkpointing(model, cfg.selective_checkpointing)
 
     if cfg.use_torch_compile:
@@ -222,17 +199,12 @@ def main(**kwargs):
 
     lr = cfg.learning_rate
     gamma = 0.85
-
     optimizer = optim.AdamW(model.parameters(), lr=lr)
-    if rank==0:
-        print(f"--> AdamW whole model tuning with lr of {lr} ")
-
     scheduler = StepLR(optimizer, step_size=1, gamma=gamma)
     epochs = cfg.num_epochs
     if rank == 0:
         print(f"Training for {epochs} epochs")
 
-    # --- main training loop 
     # Profiler
     if cfg.use_profiler:
         torch_profiler = torch.profiler.profile(
