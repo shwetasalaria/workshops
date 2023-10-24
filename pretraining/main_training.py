@@ -20,7 +20,6 @@ from pretraining.utils.train_utils import setup, setup_environ_flags, get_polici
 
 
 # ----------  Training ----------------------------------------------------------
-# our train function, called per epoch
 def train(
     cfg,
     model,
@@ -28,15 +27,11 @@ def train(
     rank,
     train_loader,
     optimizer,
-    epoch,
-    sampler=None,
-    profiler=None,
+    profiler,
 ):
     model.train()
     ddp_loss = torch.zeros(2).to(local_rank)
 
-    if sampler:
-        sampler.set_epoch(epoch)
     start = time.time()
     loop_start = time.time()
     for batch_idx, (input, label) in enumerate(train_loader, start=1):
@@ -76,7 +71,7 @@ def train(
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     train_accuracy = ddp_loss[0] / ddp_loss[1]
     if rank == 0:
-        print(f"Train Epoch: \t{epoch}, Loss: \t{train_accuracy:.4f}")
+        print(f"Loss: \t{train_accuracy:.4f}")
     return train_accuracy
 
 
@@ -167,7 +162,7 @@ def main(**kwargs):
 
     # Profiler
     if cfg.use_profiler:
-        torch_profiler = torch.profiler.profile(
+        profiler = torch.profiler.profile(
             activities=[
                 torch.profiler.ProfilerActivity.CPU,
                 torch.profiler.ProfilerActivity.CUDA,
@@ -181,21 +176,20 @@ def main(**kwargs):
             record_shapes=True,
         )
     else:
-        torch_profiler = None
+        profiler = None
 
     for epoch in range(1, cfg.num_epochs + 1):
         if rank == 0:
             print(f"\n--> Starting Epoch {epoch}")
 
         train(
+            cfg,
             model,
             local_rank,
             rank,
             train_loader,
             optimizer,
-            epoch,
-            sampler=sampler1,
-            profiler=torch_profiler,
+            profiler,
         )
         scheduler.step()
 
