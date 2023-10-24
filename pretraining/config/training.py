@@ -24,7 +24,7 @@ class train_config:
     use_profiler = False
 
     # fsdp
-    use_mixed_precision: bool = True
+    mixed_precision: bool = True
 
     fsdp_activation_checkpointing: bool = True
     selective_checkpointing = 1
