@@ -55,7 +55,7 @@ def train(
         if batch_idx % 200 == 0:
             elapsed_time = time.time() - loop_start
             world_size = int(os.environ["WORLD_SIZE"])
-            elapsed_tokens = batch_idx * world_size * cfg.batch_size
+            elapsed_tokens = batch_idx * world_size * cfg.batch_size * cfg.seq_length
             if rank == 0:
                 print("step:", batch_idx)
                 print("avg speed for these 200 steps:", (time.time() - start) / 200)
