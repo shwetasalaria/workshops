@@ -13,7 +13,7 @@ class train_config:
 
     # data and dataloader
     data_file = "/home/bvaughan/alpaca_data.json"
-    num_workers_dataloader: int = 0
+    seq_length = 4096
 
     # save models
 
@@ -23,7 +23,7 @@ class train_config:
     # profiler
     use_profiler = False
 
-    ### fsdp policies
+    # fsdp policies
     mixed_precision: bool = True
 
     fsdp_activation_checkpointing: bool = True

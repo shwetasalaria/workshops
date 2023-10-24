@@ -4,19 +4,19 @@ import time
 import fire
 import torch
 import torch.optim as optim
-from fms.datasets import instructions
+
 from fms.models import llama
 from fms.utils import tokenizers
 from torch import distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.data.distributed import DistributedSampler
 from transformers import LlamaForCausalLM, LlamaConfig
 
 import config
 import policies
-from utils.config_utils import update_config
-from utils.train_utils import setup, setup_environ_flags, get_policies
+from pretraining.utils.dataset_utils import get_train_loader
+from pretraining.utils.config_utils import update_config
+from pretraining.utils.train_utils import setup, setup_environ_flags, get_policies
 
 
 # ----------  Training ----------------------------------------------------------
@@ -134,47 +134,10 @@ def main(**kwargs):
         total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"\n--> {cfg.model_name} has {total_params/1e6} Million params\n")
 
-    # get tokenizer
-    tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
+    # get data loader
+    train_loader = get_train_loader(cfg, rank, world_size)
 
-    # ____________ create batch dataset
-
-    bos_token = '<s>'
-    eos_token = '</s>'
-    bos_token_id = tokenizer.convert_tokens_to_ids([bos_token])[0]
-    eos_token_id = tokenizer.convert_tokens_to_ids([eos_token])[0]
-
-    train_dataset = instructions.JsonInstructions(
-        cfg.data_file,
-        tokenizer=tokenizer, max_len=4096, device="cpu",
-        bos_tok_id=bos_token_id, eos_tok_id=eos_token_id
-    )
-    if 0 == os.getenv("RANK"):
-        print(f"--> Training Set Len = {len(train_dataset)}")
-        print(f"using dataset {cfg.data_file}")
-
-    val_dataset = train_dataset
-    if 0 == os.getenv("RANK"):
-        print(f"--> Validation set len = {len(val_dataset)}")
-
-    sampler1 = DistributedSampler(
-        train_dataset, rank=rank, num_replicas=world_size, shuffle=True
-    )
-    sampler2 = DistributedSampler(val_dataset, rank=rank, num_replicas=world_size)
-
-    train_kwargs = {"batch_size": cfg.batch_size, "sampler": sampler1}
-    test_kwargs = {"batch_size": cfg.val_batch_size, "sampler": sampler2}
-    cuda_kwargs = {
-        "num_workers": cfg.num_workers_dataloader,
-        "pin_memory": False,
-        "shuffle": False,
-    }
-    train_kwargs.update(cuda_kwargs)
-    test_kwargs.update(cuda_kwargs)
-
-    train_loader = torch.utils.data.DataLoader(train_dataset, **train_kwargs)
-
-    # Main FSDP call
+    # fsdp
     model = FSDP(
         model,
         auto_wrap_policy=wrapping_policy,
@@ -188,7 +151,7 @@ def main(**kwargs):
         if cfg.low_cpu_fsdp and rank != 0 else None,
     )
 
-    # if fsdp activation checkpointing:
+    # fsdp activation checkpointing
     if cfg.fsdp_activation_checkpointing:
         if rank == 0:
             print(f"--> applying FSDP activation checkpointing...")
@@ -197,13 +160,10 @@ def main(**kwargs):
     if cfg.use_torch_compile:
         print("compile not supported yet for llama")
 
-    lr = cfg.learning_rate
-    gamma = 0.85
-    optimizer = optim.AdamW(model.parameters(), lr=lr)
-    scheduler = StepLR(optimizer, step_size=1, gamma=gamma)
-    epochs = cfg.num_epochs
+    optimizer = optim.AdamW(model.parameters(), lr=cfg.learning_rate)
+    scheduler = StepLR(optimizer, step_size=1, gamma=0.85)
     if rank == 0:
-        print(f"Training for {epochs} epochs")
+        print(f"Training for {cfg.num_epochs} epochs")
 
     # Profiler
     if cfg.use_profiler:
@@ -223,7 +183,7 @@ def main(**kwargs):
     else:
         torch_profiler = None
 
-    for epoch in range(1, epochs + 1):
+    for epoch in range(1, cfg.num_epochs + 1):
         if rank == 0:
             print(f"\n--> Starting Epoch {epoch}")
 
