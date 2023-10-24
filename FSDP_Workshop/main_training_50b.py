@@ -279,17 +279,30 @@ def fsdp_main(args):
     if rank == 0:
         t1 = time.time()
 
+    # llama_config = LLaMAConfig(
+    #     kvheads=8,
+    #     src_vocab_size=32000,
+    #     emb_dim=8192,
+    #     norm_eps=1e-05,
+    #     nheads=64,
+    #     nlayers=80,
+    #     hidden_grow_factor=3.5,
+    #     multiple_of=1,  # this is set to 1 as it is encoded in the hidden dimension
+    #     activation_fn="silu",
+    #     max_expected_seq_len=2048,
+    # )
+
     llama_config = LLaMAConfig(
         kvheads=8,
         src_vocab_size=32000,
-        emb_dim=8192,
+        emb_dim=7680,
         norm_eps=1e-05,
-        nheads=64,
-        nlayers=80,
+        nheads=60,
+        nlayers=72,
         hidden_grow_factor=3.5,
         multiple_of=1,  # this is set to 1 as it is encoded in the hidden dimension
         activation_fn="silu",
-        max_expected_seq_len=2048,
+        max_expected_seq_len=4096,
     )
 
     if cfg.low_cpu_fsdp:
