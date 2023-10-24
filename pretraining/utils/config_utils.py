@@ -1,4 +1,4 @@
-from ..config import train_config
+from pretraining.config import train_config
 
 
 def update_config(config, **kwargs):

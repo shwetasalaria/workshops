@@ -7,7 +7,7 @@ try:
 except ImportError:
     from pkg_resources import packaging
 
-from ..policies import *
+from pretraining.policies import *
 
 from torch.distributed.fsdp import ShardingStrategy
 
