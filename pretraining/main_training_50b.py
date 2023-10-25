@@ -8,6 +8,7 @@ import torch.optim as optim
 from fms.models import llama
 from fms.models.llama import LLaMAConfig, LLaMA
 from torch import distributed as dist
+from torch.distributed._tensor import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.optim.lr_scheduler import StepLR
 from transformers import LlamaForCausalLM, LlamaConfig
@@ -139,6 +140,7 @@ def main(**kwargs):
         sync_module_states=True,
         param_init_fn=lambda module: module.to_empty(device=torch.device("cuda"), recurse=False)
         if rank != 0 else None,
+        device_mesh=init_device_mesh("cuda", (world_size // cfg.sharding_group_size, cfg.sharding_group_size))
     )
 
     # fsdp activation checkpointing
