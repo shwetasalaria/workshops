@@ -2,6 +2,7 @@ import os
 
 from dataclasses import dataclass
 
+
 @dataclass
 class train_config:
     # seed
@@ -25,19 +26,15 @@ class train_config:
 
     # fsdp policies
     mixed_precision: bool = True
-
     fsdp_activation_checkpointing: bool = True
     selective_checkpointing = 1
-
     sharding_strategy = "fsdp"
-    low_cpu_fsdp: bool = True
+    low_cpu_fsdp: bool = False
 
     # training spec
     batch_size: int = 2
-    num_epochs: int = 2
-    learning_rate: float = 4e-8
+    num_epochs: int = 1
+    learning_rate: float = 3e-4
 
-    # validation
-    run_validation: bool = False
-    val_batch_size = 8
-    block_for_validation: bool = False
+    # reporting
+    report_interval = 200

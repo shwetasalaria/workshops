@@ -6,7 +6,6 @@ import torch
 import torch.optim as optim
 
 from fms.models import llama
-from fms.utils import tokenizers
 from torch import distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.optim.lr_scheduler import StepLR
@@ -52,13 +51,13 @@ def train(
         if profiler:
             profiler.step()
 
-        if batch_idx % 200 == 0:
+        if batch_idx % cfg.report_interval == 0:
             elapsed_time = time.time() - loop_start
             world_size = int(os.environ["WORLD_SIZE"])
             elapsed_tokens = batch_idx * world_size * cfg.batch_size * cfg.seq_length
             if rank == 0:
                 print("step:", batch_idx)
-                print("avg speed for these 200 steps:", (time.time() - start) / 200)
+                print(f"speed for these {cfg.report_interval} steps:", (time.time() - start) / cfg.report_interval)
                 print("overall speed:", elapsed_time / batch_idx)
                 print("reserved memory:", torch.cuda.max_memory_reserved(device=torch.cuda.current_device()))
                 print("active memory:", torch.cuda.max_memory_allocated(device=torch.cuda.current_device()))
