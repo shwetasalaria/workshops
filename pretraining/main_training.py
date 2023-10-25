@@ -132,16 +132,6 @@ def main(**kwargs):
     # get data loader
     train_loader = get_train_loader(cfg, rank, world_size)
 
-    #
-    if cfg.sharding_strategy == "hsdp":
-        a = world_size // cfg.sharding_group_size
-        b = cfg.sharding_group_size
-        print(a)
-        print(b)
-        device_mesh = init_device_mesh("cuda", (a, b))
-    else:
-        device_mesh = None
-
     # fsdp
     model = FSDP(
         model,
@@ -154,7 +144,8 @@ def main(**kwargs):
         sync_module_states=cfg.low_cpu_fsdp,
         param_init_fn=lambda module: module.to_empty(device=torch.device("cuda"), recurse=False)
         if cfg.low_cpu_fsdp and rank != 0 else None,
-        device_mesh=device_mesh
+        device_mesh=init_device_mesh("cuda", (world_size // cfg.sharding_group_size, cfg.sharding_group_size))
+        if cfg.sharding_strategy == "hsdp" else None,
     )
 
     # fsdp activation checkpointing
