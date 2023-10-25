@@ -9,26 +9,26 @@ class train_config:
     seed: int = 2023
 
     # model
-    model_name = "/lustre/llama_weights/hf/7B"
-    tokenizer = "/lustre/llama_weights/tokenizer.model"
+    model_name: str = "/lustre/llama_weights/hf/7B"
+    tokenizer: str = "/lustre/llama_weights/tokenizer.model"
 
     # data and dataloader
-    data_file = "/home/bvaughan/alpaca_data.json"
-    seq_length = 4096
+    data_file: str = "/home/bvaughan/alpaca_data.json"
+    seq_length: int = 4096
 
     # save models
 
     # compile
-    use_torch_compile = False
+    use_torch_compile: bool = False
 
     # profiler
-    use_profiler = False
+    use_profiler: bool = False
 
     # fsdp policies
     mixed_precision: bool = True
     fsdp_activation_checkpointing: bool = True
-    selective_checkpointing = 1
-    sharding_strategy = "fsdp"
+    selective_checkpointing: int = 1
+    sharding_strategy: str = "fsdp"
     low_cpu_fsdp: bool = False
 
     # training spec
@@ -37,4 +37,4 @@ class train_config:
     learning_rate: float = 3e-4
 
     # reporting
-    report_interval = 200
+    report_interval: int = 200
