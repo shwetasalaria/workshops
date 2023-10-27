@@ -49,7 +49,7 @@ def train(
         if batch_idx % cfg.report_interval == 0:
             elapsed_time = time.time() - loop_start
             world_size = int(os.environ["WORLD_SIZE"])
-            elapsed_tokens = batch_idx * world_size * cfg.batch_size * cfg.seq_length
+            elapsed_tokens = batch_idx * world_size * cfg.batch_size * cfg.seq_length // cfg.tp_size
             if rank == 0:
                 print("step:", batch_idx)
                 print(f"speed for these {cfg.report_interval} steps:", (time.time() - start) / cfg.report_interval)
