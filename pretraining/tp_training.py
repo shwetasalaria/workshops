@@ -4,23 +4,27 @@ import time
 import fire
 import torch
 import torch.optim as optim
-
 from fms.models import llama
 from torch import distributed as dist
 from torch.distributed._tensor import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.tensor.parallel import (
+    parallelize_module,
+    ColwiseParallel,
+    RowwiseParallel,
+)
+from torch.distributed.tensor.parallel.fsdp import enable_2d_with_fsdp
 from torch.optim.lr_scheduler import StepLR
 from transformers import LlamaForCausalLM, LlamaConfig
 
 import config
 import policies
-from pretraining.utils.dataset_utils import get_train_loader
 from pretraining.utils.config_utils import update_config
+from pretraining.utils.dataset_utils import get_train_loader
 from pretraining.utils.train_utils import setup, setup_environ_flags, get_policies, train, get_profiler
 
 
 def main(**kwargs):
-
     # get configs
     cfg = config.train_config()
     update_config(cfg, **kwargs)
@@ -60,70 +64,49 @@ def main(**kwargs):
         model = LlamaForCausalLM.from_pretrained(cfg.model_name)
     if rank == 0:
         t2 = time.time()
-        print("rank:", rank, "hf model loaded.", "time:", t2-t1)
+        print("rank:", rank, "hf model loaded.", "time:", t2 - t1)
 
     # get fms model
     model = llama.convert_hf_llama(model)
     if rank == 0:
         t3 = time.time()
-        print("rank:", rank, "fms model converted.", "time:", t3-t2)
+        print("rank:", rank, "fms model converted.", "time:", t3 - t2)
 
     if rank == 0:
         print(f"--> Training for {cfg.model_name}")
         total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"\n--> {cfg.model_name} has {total_params/1e6} Million params\n")
+        print(f"\n--> {cfg.model_name} has {total_params / 1e6} Million params\n")
 
     # get data loader
     train_loader = get_train_loader(cfg, rank, world_size)
 
+    # TP
+    if cfg.tp_size > 1:
+        assert enable_2d_with_fsdp()
+        twod_mesh = init_device_mesh("cuda", (world_size // cfg.tp_size, cfg.tp_size))
+        blocks = model.get_submodule("layers")
+        for i, block in enumerate(blocks):
+            if rank == 0:
+                print("parallelization of block:", i)
+            block = parallelize_module(
+                module=block,
+                device_mesh=twod_mesh,
+                parallelize_plan={
+                    "attn.query": ColwiseParallel(),
+                    "attn.key": ColwiseParallel(),
+                    "attn.value": ColwiseParallel(),
+                    "attn.dense": RowwiseParallel(),
+                    "ff_sub_layer.w1": ColwiseParallel(),
+                    "ff_sub_layer.wg": ColwiseParallel(),
+                    "ff_sub_layer.w2": RowwiseParallel(),
+                },
+                tp_mesh_dim=1,
+            )
+        fsdp_pg = twod_mesh.get_dim_groups()[0]
+    else:
+        fsdp_pg = None
 
-
-
-
-
-
-    from torch.distributed.tensor.parallel.fsdp import enable_2d_with_fsdp
-
-    from torch.distributed._tensor import (
-        DeviceMesh,
-    )
-    from torch.distributed.tensor.parallel import (
-        parallelize_module,
-        ColwiseParallel,
-        RowwiseParallel,
-    )
-
-    assert enable_2d_with_fsdp()
-
-    tp_size = 8
-
-    # 2-D mesh is [dp, tp]
-    twod_mesh = init_device_mesh("cuda", (world_size // tp_size, tp_size))
-
-    blocks = model.get_submodule("layers")
-    for i, block in enumerate(blocks):
-        if rank == 0:
-            print("parallelization of block:", i)
-
-        parallelized_block = parallelize_module(
-            module=block,
-            device_mesh=twod_mesh,
-            parallelize_plan={
-                "attn.query": ColwiseParallel(),
-                "attn.key": ColwiseParallel(),
-                "attn.value": ColwiseParallel(),
-                "attn.dense": RowwiseParallel(),
-                "ff_sub_layer.w1": ColwiseParallel(),
-                "ff_sub_layer.wg": ColwiseParallel(),
-                "ff_sub_layer.w2": RowwiseParallel(),
-            },
-            tp_mesh_dim=1,
-        )
-        block = parallelized_block
-
-    fsdp_pg = twod_mesh.get_dim_groups()[0]
-
-    # fsdp
+    # FSDP
     model = FSDP(
         model,
         process_group=fsdp_pg,
@@ -175,4 +158,3 @@ def main(**kwargs):
 
 if __name__ == "__main__":
     fire.Fire(main)
-    
