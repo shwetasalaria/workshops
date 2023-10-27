@@ -76,9 +76,61 @@ def main(**kwargs):
     # get data loader
     train_loader = get_train_loader(cfg, rank, world_size)
 
+
+
+
+
+
+
+    from torch.distributed.tensor.parallel.fsdp import enable_2d_with_fsdp
+
+    from torch.distributed._tensor import (
+        DeviceMesh,
+    )
+    from torch.distributed.tensor.parallel import (
+        PairwiseParallel,
+        parallelize_module,
+        ColwiseParallel,
+        RowwiseParallel,
+    )
+
+    assert enable_2d_with_fsdp()
+
+    tp_size = 8
+
+    # 2-D mesh is [dp, tp]
+    twod_mesh = DeviceMesh(
+        device_type="cuda",
+        mesh=torch.arange(0, world_size).view(-1, tp_size),
+    )
+
+    blocks = model.get_submodule("layers")
+    for i, block in enumerate(blocks):
+        if rank == 0:
+            print("parallelization of block:", i)
+
+        parallelized_block = parallelize_module(
+            module=block,
+            device_mesh=twod_mesh,
+            parallelize_plan={
+                "attn.query": ColwiseParallel(),
+                "attn.key": ColwiseParallel(),
+                "attn.value": ColwiseParallel(),
+                "attn.dense": RowwiseParallel(),
+                "ff_sub_layer.w1": ColwiseParallel(),
+                "ff_sub_layer.wg": ColwiseParallel(),
+                "ff_sub_layer.w2": RowwiseParallel(),
+            },
+            tp_mesh_dim=1,
+        )
+        block = parallelized_block
+
+    fsdp_pg = twod_mesh.get_dim_groups()[0]
+
     # fsdp
     model = FSDP(
         model,
+        process_group=fsdp_pg,
         auto_wrap_policy=wrapping_policy,
         mixed_precision=mixed_precision_policy,
         sharding_strategy=sharding_strategy_policy,

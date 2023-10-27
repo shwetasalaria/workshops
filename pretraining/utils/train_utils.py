@@ -1,4 +1,6 @@
 import os
+import time
+
 import torch.cuda.nccl as nccl
 import torch.distributed as dist
 
@@ -10,6 +12,61 @@ except ImportError:
 from pretraining.policies import *
 
 from torch.distributed.fsdp import ShardingStrategy
+
+
+def train(
+    cfg,
+    model,
+    local_rank,
+    rank,
+    train_loader,
+    optimizer,
+    profiler,
+):
+    model.train()
+    ddp_loss = torch.zeros(2).to(local_rank)
+
+    start = time.time()
+    loop_start = time.time()
+    for batch_idx, (input, label) in enumerate(train_loader, start=1):
+        input = input.to(local_rank)
+        label = label.to(local_rank)
+
+        optimizer.zero_grad()
+        output = model(input)
+        ce_loss = torch.nn.CrossEntropyLoss()
+        loss = ce_loss(output.transpose(-1, -2), label)
+
+        loss.backward()
+        optimizer.step()
+
+        ddp_loss[0] += loss.item()
+        ddp_loss[1] += 1
+
+        if profiler:
+            profiler.step()
+
+        if batch_idx % cfg.report_interval == 0:
+            elapsed_time = time.time() - loop_start
+            world_size = int(os.environ["WORLD_SIZE"])
+            elapsed_tokens = batch_idx * world_size * cfg.batch_size * cfg.seq_length
+            if rank == 0:
+                print("step:", batch_idx)
+                print(f"speed for these {cfg.report_interval} steps:", (time.time() - start) / cfg.report_interval)
+                print("overall speed:", elapsed_time / batch_idx)
+                print("reserved memory:", torch.cuda.max_memory_reserved(device=torch.cuda.current_device()))
+                print("active memory:", torch.cuda.max_memory_allocated(device=torch.cuda.current_device()))
+                print("overall token per gpu per sec:", int(elapsed_tokens / world_size / elapsed_time))
+                print("token per day:", int(elapsed_tokens / elapsed_time * 3600 * 24))
+            start = time.time()
+        torch.cuda.reset_peak_memory_stats(device=torch.cuda.current_device())
+
+    # consolidate final loss number - do not use .reduce here, requires global synch
+    dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
+    train_accuracy = ddp_loss[0] / ddp_loss[1]
+    if rank == 0:
+        print(f"Loss: \t{train_accuracy:.4f}")
+    return train_accuracy
 
 
 def setup():
@@ -60,3 +117,23 @@ def get_policies(cfg, rank):
         print(f"Sharding strategy = {cfg.sharding_strategy}")
 
     return mixed_precision_policy, wrapping_policy, sharding_strategy
+
+
+def get_profiler(cfg):
+    if cfg.use_profiler:
+        profiler = torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                "profile_traces"
+            ),
+            profile_memory=True,
+            with_stack=False,
+            record_shapes=True,
+        )
+    else:
+        profiler = None
+    return profiler
