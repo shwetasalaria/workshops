@@ -88,7 +88,6 @@ def main(**kwargs):
         DeviceMesh,
     )
     from torch.distributed.tensor.parallel import (
-        PairwiseParallel,
         parallelize_module,
         ColwiseParallel,
         RowwiseParallel,
@@ -99,10 +98,7 @@ def main(**kwargs):
     tp_size = 8
 
     # 2-D mesh is [dp, tp]
-    twod_mesh = DeviceMesh(
-        device_type="cuda",
-        mesh=torch.arange(0, world_size).view(-1, tp_size),
-    )
+    twod_mesh = init_device_mesh("cuda", (world_size // tp_size, tp_size))
 
     blocks = model.get_submodule("layers")
     for i, block in enumerate(blocks):
