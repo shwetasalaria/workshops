@@ -6,6 +6,7 @@ import fire
 import torch
 import torch.optim as optim
 from fms.models import llama
+from fms.datasets import dataset as fmdata
 from torch import distributed as dist
 from torch.distributed._tensor import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
@@ -79,7 +80,46 @@ def main(**kwargs):
         print(f"\n--> {cfg.model_name} has {total_params / 1e6} Million params\n")
 
     # get data loader
-    train_loader = get_train_loader(cfg, rank, world_size)
+    def causal_lm(data_seq, prompt_len=1):
+        """
+        Perform causal language modeling by right-shifting the input sequence.
+        Sets first prompt_len tokens to be ignored by the loss. Assumes inputs start with BOS.
+        """
+        data_seq = torch.IntTensor(data_seq)
+        t = data_seq.clone()[1:]
+        data_seq = data_seq[:-1]
+        t[:prompt_len] = -100
+        return data_seq, t
+    base_scalable = fmdata.Scalable_Shard_Dataset
+    data = base_scalable(
+        cfg.data_path,
+        fmdata.Streaming_Doc_Dataset,
+        rank,
+        world_size,
+        cfg.sep_token,
+        trainsplit=1,
+        is_val=False,
+        min_length=3,
+        datasets=cfg.datasets,
+        weights=cfg.weights,
+        seed=cfg.seed,
+        verbose=(rank == 0),
+        n_logical_shards=cfg.logical_shards,
+    )
+    data = fmdata.Buffer_Dataset(
+        data,
+        [cfg.seq_length + 1],
+        bos_token=cfg.sep_token,
+        pack_hard=True,
+    )
+    data = fmdata.Preload_Buffer_Dataset(data, 10000)
+    data = fmdata.Preprocess_Dataset(data, causal_lm)
+
+    if rank==0:
+        print("Constructing datasets...")
+    train_loader = iter(torch.utils.data.DataLoader(data, num_workers=0, batch_size=bsize))
+    if rank==0:
+        print("Datasets constructed!")
 
     # TP
     if cfg.tp_size > 1:
@@ -134,7 +174,7 @@ def main(**kwargs):
         print("compile not supported yet for llama")
 
     optimizer = optim.AdamW(model.parameters(), lr=cfg.learning_rate, betas=(.9,.95), weight_decay=0.1)
-    warmup_interval = min(2000, args.num_steps//20)
+    warmup_interval = min(2000, cfg.num_steps//20)
     schedule = lambda x: min(
         1 - (1 - min(x, warmup_interval) / warmup_interval) ** 2,  # parabolic anneal
         0.1 + 0.5 * (1 - 0.1) * (1 + math.cos(min(x, cfg.num_steps) / cfg.num_steps * math.pi)),
