@@ -104,7 +104,7 @@ def main(**kwargs):
     mixed_precision_policy, wrapping_policy, sharding_strategy_policy = get_policies(cfg, rank)
 
     llama_config = LLaMAConfig(
-        kvheads=15,
+        kvheads=20,
         src_vocab_size=32000,
         emb_dim=7680,
         norm_eps=1e-05,
