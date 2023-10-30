@@ -1,3 +1,4 @@
+import math
 import os
 import time
 
@@ -14,7 +15,7 @@ from torch.distributed.tensor.parallel import (
     RowwiseParallel,
 )
 from torch.distributed.tensor.parallel.fsdp import enable_2d_with_fsdp
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import LambdaLR
 from transformers import LlamaForCausalLM, LlamaConfig
 
 import config
@@ -132,27 +133,32 @@ def main(**kwargs):
     if cfg.use_torch_compile:
         print("compile not supported yet for llama")
 
-    optimizer = optim.AdamW(model.parameters(), lr=cfg.learning_rate)
-    scheduler = StepLR(optimizer, step_size=1, gamma=0.85)
+    optimizer = optim.AdamW(model.parameters(), lr=cfg.learning_rate, betas=(.9,.95), weight_decay=0.1)
+    warmup_interval = min(2000, args.num_steps//20)
+    schedule = lambda x: min(
+        1 - (1 - min(x, warmup_interval) / warmup_interval) ** 2,  # parabolic anneal
+        0.1 + 0.5 * (1 - 0.1) * (1 + math.cos(min(x, cfg.num_steps) / cfg.num_steps * math.pi)),
+    )
+    scheduler = LambdaLR(optimizer, schedule)
     profiler = get_profiler(cfg)
 
     if rank == 0:
         print(f"Training for {cfg.num_epochs} epochs")
 
-    for epoch in range(1, cfg.num_epochs + 1):
-        if rank == 0:
-            print(f"\n--> Starting Epoch {epoch}")
+    # for epoch in range(1, cfg.num_epochs + 1):
+    if rank == 0:
+        print(f"\n--> Starting Training")
 
-        train(
-            cfg,
-            model,
-            local_rank,
-            rank,
-            train_loader,
-            optimizer,
-            profiler,
-        )
-        scheduler.step()
+    train(
+        cfg,
+        model,
+        local_rank,
+        rank,
+        train_loader,
+        optimizer,
+        scheduler,
+        profiler,
+    )
 
     dist.barrier()
     dist.destroy_process_group()
