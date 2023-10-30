@@ -37,7 +37,8 @@ class train_config:
 
     # training spec
     batch_size: int = 2
-    num_steps: int = 1e5
+    num_epochs: int = 100
+    num_steps: int = 1e3
     learning_rate: float = 3e-4
 
     # reporting
