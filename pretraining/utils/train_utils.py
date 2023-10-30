@@ -111,6 +111,8 @@ def get_policies(cfg, rank):
         sharding_strategy = ShardingStrategy.FULL_SHARD
     elif cfg.sharding_strategy == "hsdp":
         sharding_strategy = ShardingStrategy.HYBRID_SHARD
+    elif cfg.sharding_strategy == "zero2":
+        sharding_strategy = ShardingStrategy._HYBRID_SHARD_ZERO2
     else:
         sharding_strategy = ShardingStrategy.FULL_SHARD
     if rank == 0:
@@ -126,7 +128,7 @@ def get_profiler(cfg):
                 torch.profiler.ProfilerActivity.CPU,
                 torch.profiler.ProfilerActivity.CUDA,
             ],
-            schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=1),
+            schedule=torch.profiler.schedule(skip_first=5, wait=5, warmup=5, active=3, repeat=1),
             on_trace_ready=torch.profiler.tensorboard_trace_handler(
                 "profile_traces"
             ),

@@ -64,13 +64,13 @@ def main(**kwargs):
         model = LlamaForCausalLM.from_pretrained(cfg.model_name)
     if rank == 0:
         t2 = time.time()
-        print("rank:", rank, "hf model loaded.", "time:", t2 - t1)
+        print("hf model loaded.", "time:", t2 - t1)
 
     # get fms model
     model = llama.convert_hf_llama(model)
     if rank == 0:
         t3 = time.time()
-        print("rank:", rank, "fms model converted.", "time:", t3 - t2)
+        print("fms model converted.", "time:", t3 - t2)
 
     if rank == 0:
         print(f"--> Training for {cfg.model_name}")
@@ -120,7 +120,7 @@ def main(**kwargs):
         param_init_fn=lambda module: module.to_empty(device=torch.device("cuda"), recurse=False)
         if cfg.low_cpu_fsdp and rank != 0 else None,
         device_mesh=init_device_mesh("cuda", (world_size // cfg.sharding_group_size, cfg.sharding_group_size))
-        if cfg.sharding_strategy == "hsdp" else None,
+        if cfg.sharding_strategy in ("hsdp", "zero2") else None,
     )
 
     # fsdp activation checkpointing
