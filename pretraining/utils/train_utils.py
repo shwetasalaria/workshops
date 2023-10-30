@@ -21,6 +21,7 @@ def train(
     rank,
     train_loader,
     optimizer,
+    scheduler,
     profiler,
 ):
     model.train()
@@ -28,17 +29,19 @@ def train(
 
     start = time.time()
     loop_start = time.time()
-    for batch_idx, (input, label) in enumerate(train_loader, start=1):
+    for batch_idx in range(cfg.num_steps):
+        input, label = next(train_loader)
         input = input.to(local_rank)
         label = label.to(local_rank)
 
         optimizer.zero_grad()
         output = model(input)
         ce_loss = torch.nn.CrossEntropyLoss()
-        loss = ce_loss(output.transpose(-1, -2), label)
+        loss = ce_loss(output.view(-1, output.size(-1)), label.view(-1))
 
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         ddp_loss[0] += loss.item()
         ddp_loss[1] += 1
