@@ -23,7 +23,7 @@ import config
 import policies
 from pretraining.utils.config_utils import update_config
 from pretraining.utils.dataset_utils import get_train_loader
-from pretraining.utils.train_utils import setup, setup_environ_flags, get_policies, train, get_profiler
+from pretraining.utils.train_utils import setup, setup_environ_flags, get_policies, train, get_profiler, parse_data_args
 
 
 def main(**kwargs):
@@ -80,6 +80,7 @@ def main(**kwargs):
         print(f"\n--> {cfg.model_name} has {total_params / 1e6} Million params\n")
 
     # get data loader
+    datasets, weights = parse_data_args(cfg.datasets, cfg.weights)
     def causal_lm(data_seq, prompt_len=1):
         """
         Perform causal language modeling by right-shifting the input sequence.
@@ -100,8 +101,8 @@ def main(**kwargs):
         trainsplit=1,
         is_val=False,
         min_length=3,
-        datasets=cfg.datasets,
-        weights=cfg.weights,
+        datasets=datasets,
+        weights=weights,
         seed=cfg.seed,
         verbose=(rank == 0),
         n_logical_shards=cfg.logical_shards,
