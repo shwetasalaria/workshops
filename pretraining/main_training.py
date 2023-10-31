@@ -117,7 +117,7 @@ def main(**kwargs):
 
     if rank==0:
         print("Constructing datasets...")
-    train_loader = iter(torch.utils.data.DataLoader(data, num_workers=0, batch_size=bsize))
+    train_loader = iter(torch.utils.data.DataLoader(data, num_workers=0, batch_size=cfg.batch_size))
     if rank==0:
         print("Datasets constructed!")
 
