@@ -37,7 +37,7 @@ def train(
         optimizer.zero_grad()
         output = model(input)
         ce_loss = torch.nn.CrossEntropyLoss()
-        loss = ce_loss(output.view(-1, output.size(-1)), label.view(-1))
+        loss = ce_loss(output.view(-1, output.size(-1)), label.view(-1).long())
 
         loss.backward()
         optimizer.step()
