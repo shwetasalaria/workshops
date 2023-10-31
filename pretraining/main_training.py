@@ -90,7 +90,7 @@ def main(**kwargs):
         data_seq = data_seq[:-1]
         t[:prompt_len] = -100
         return data_seq, t
-    base_scalable = fmdata.Scalable_Shard_Dataset
+    base_scalable = fmdata.Scalable_Sampling_Dataset
     data = base_scalable(
         cfg.data_path,
         fmdata.Streaming_Doc_Dataset,
