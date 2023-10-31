@@ -140,3 +140,11 @@ def get_profiler(cfg):
     else:
         profiler = None
     return profiler
+
+
+def parse_data_args(datas, weights):
+    def splitstrip(x):
+        return [item.strip() for item in x.split(",")]
+    datas = ["dataset="+x for x in splitstrip(datas)]
+    weights = [float(x) for x in splitstrip(weights)]
+    return datas, weights
