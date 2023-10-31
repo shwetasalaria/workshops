@@ -16,38 +16,8 @@ class train_config:
     data_path: str = "/lustre/bluepile-processing/rel0_5/tokens_llama2/lang=en/"
     seq_length: int = 4096
     sep_token: int = 0
-    datasets = [
-        "dataset=commoncrawl",
-        "dataset=webhose",
-        "dataset=github_clean",
-        "dataset=wikipedia/lang=de",
-        "dataset=wikipedia/lang=es",
-        "dataset=wikipedia/lang=fr",
-        "dataset=wikipedia/lang=ja",
-        "dataset=wikipedia/lang=pt",
-        "dataset=wikimedia",
-        "dataset=uspto",
-        "dataset=pubmedcentral",
-        "dataset=arxiv",
-        "dataset=stackexchange",
-        "dataset=PG19",
-    ]
-    weights = [
-        7700,
-        500,
-        550,
-        28,
-        17,
-        22,
-        25,
-        8,
-        100,
-        500,
-        175,
-        250,
-        100,
-        25
-    ]
+    datasets = "commoncrawl,webhose,github_clean,wikipedia/lang=de,wikipedia/lang=es,wikipedia/lang=fr,wikipedia/lang=ja,wikipedia/lang=pt,wikimedia,uspto,pubmedcentral,arxiv,stackexchange,PG19"
+    weights = "7700,500,550,28,17,22,25,8,100,500,175,250,100,25"
     logical_shards: int = 768
 
     # save models
