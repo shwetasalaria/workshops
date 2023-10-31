@@ -29,7 +29,7 @@ def train(
 
     start = time.time()
     loop_start = time.time()
-    for batch_idx in range(cfg.num_steps):
+    for batch_idx in range(1,cfg.num_steps+1):
         input, label = next(train_loader)
         input = input.to(local_rank)
         label = label.to(local_rank)
