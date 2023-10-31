@@ -13,8 +13,18 @@ class train_config:
     tokenizer: str = "/lustre/llama_weights/tokenizer.model"
 
     # data and dataloader
-    data_file: str = "/home/bvaughan/alpaca_data.json"
+    data_path: str = "/home/bvaughan/"
     seq_length: int = 4096
+    sep_token: int = 0
+    datasets = [
+        "dataset=commoncrawl",
+        "dataset=wikimedia",
+    ]
+    weights = [
+        .9,
+        .1,
+    ]
+    logical_shards: int = 768
 
     # save models
 
