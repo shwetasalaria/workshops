@@ -46,3 +46,4 @@ class train_config:
 
     # reporting
     report_interval: int = 200
+    checkpoint_interval: int = 10000
