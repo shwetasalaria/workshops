@@ -184,22 +184,18 @@ def main(**kwargs):
     profiler = get_profiler(cfg)
 
     if rank == 0:
-        print(f"Training for {cfg.num_epochs} epochs")
+        print(f"Training for {cfg.num_steps} steps")
 
-    for epoch in range(1, cfg.num_epochs + 1):
-        if rank == 0:
-            print(f"\n--> Starting Epoch {epoch}")
-
-        train(
-            cfg,
-            model,
-            local_rank,
-            rank,
-            train_loader,
-            optimizer,
-            scheduler,
-            profiler,
-        )
+    train(
+        cfg,
+        model,
+        local_rank,
+        rank,
+        train_loader,
+        optimizer,
+        scheduler,
+        profiler,
+    )
 
     dist.barrier()
     dist.destroy_process_group()
