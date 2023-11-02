@@ -180,7 +180,6 @@ def main(**kwargs):
 
     # Load from checkpoint
     start_step = 0
-    tokens_seen = 0
     checkpointer = Checkpointer(cfg.model_name, 1000, cfg.sharding_strategy, rank, local_rank)
     model, optimizer, train_loader, start_step, tokens_seen = checkpointer.load(
         model,
@@ -212,7 +211,6 @@ def main(**kwargs):
         profiler,
         checkpointer,
         start_step,
-        tokens_seen,
     )
 
     dist.barrier()
