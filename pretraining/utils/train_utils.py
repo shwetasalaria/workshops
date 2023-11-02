@@ -23,13 +23,15 @@ def train(
     optimizer,
     scheduler,
     profiler,
+    checkpointer,
+    start_step,
 ):
     model.train()
     ddp_loss = torch.zeros(2).to(local_rank)
 
     start = time.time()
     loop_start = time.time()
-    for batch_idx in range(1,cfg.num_steps+1):
+    for batch_idx in range(start_step+1,cfg.num_steps+1):
         input, label = next(train_loader)
         input = input.to(local_rank)
         label = label.to(local_rank)
@@ -52,17 +54,25 @@ def train(
         if batch_idx % cfg.report_interval == 0:
             elapsed_time = time.time() - loop_start
             world_size = int(os.environ["WORLD_SIZE"])
-            elapsed_tokens = batch_idx * world_size * cfg.batch_size * cfg.seq_length // cfg.tp_size
+            elapsed_tokens = (batch_idx - start_step) * world_size * cfg.batch_size * cfg.seq_length // cfg.tp_size
             if rank == 0:
                 print("step:", batch_idx)
                 print(f"speed for these {cfg.report_interval} steps:", (time.time() - start) / cfg.report_interval)
-                print("overall speed:", elapsed_time / batch_idx)
+                print("overall speed:", elapsed_time / (batch_idx - start_step))
                 print("reserved memory:", torch.cuda.max_memory_reserved(device=torch.cuda.current_device()))
                 print("active memory:", torch.cuda.max_memory_allocated(device=torch.cuda.current_device()))
                 print("overall token per gpu per sec:", int(elapsed_tokens / world_size / elapsed_time))
                 print("token per day:", int(elapsed_tokens / elapsed_time * 3600 * 24))
             start = time.time()
         torch.cuda.reset_peak_memory_stats(device=torch.cuda.current_device())
+
+        if batch_idx % cfg.checkpoint_interval == 0:
+            overwritten = checkpointer.save(
+                batch_idx,
+                model,
+                optimizer,
+                train_loader,
+            )
 
     # consolidate final loss number - do not use .reduce here, requires global synch
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
