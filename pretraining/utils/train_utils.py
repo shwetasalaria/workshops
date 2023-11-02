@@ -52,11 +52,14 @@ def train(
             profiler.step()
 
         if batch_idx % cfg.report_interval == 0:
+            dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
+            train_accuracy = ddp_loss[0] / ddp_loss[1]
             elapsed_time = time.time() - loop_start
             world_size = int(os.environ["WORLD_SIZE"])
             elapsed_tokens = (batch_idx - start_step) * world_size * cfg.batch_size * cfg.seq_length // cfg.tp_size
             if rank == 0:
                 print("step:", batch_idx)
+                print("loss:", train_accuracy)
                 print(f"speed for these {cfg.report_interval} steps:", (time.time() - start) / cfg.report_interval)
                 print("overall speed:", elapsed_time / (batch_idx - start_step))
                 print("reserved memory:", torch.cuda.max_memory_reserved(device=torch.cuda.current_device()))
@@ -64,6 +67,7 @@ def train(
                 print("overall token per gpu per sec:", int(elapsed_tokens / world_size / elapsed_time))
                 print("token per day:", int(elapsed_tokens / elapsed_time * 3600 * 24))
             start = time.time()
+            ddp_loss.zero_()
         torch.cuda.reset_peak_memory_stats(device=torch.cuda.current_device())
 
         if batch_idx % cfg.checkpoint_interval == 0:
@@ -74,11 +78,6 @@ def train(
                 train_loader,
             )
 
-    # consolidate final loss number - do not use .reduce here, requires global synch
-    dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
-    train_accuracy = ddp_loss[0] / ddp_loss[1]
-    if rank == 0:
-        print(f"Loss: \t{train_accuracy:.4f}")
     return train_accuracy
 
 
