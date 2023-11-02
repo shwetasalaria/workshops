@@ -7,6 +7,7 @@ import torch
 import torch.optim as optim
 from fms.models import llama
 from fms.datasets import dataset as fmdata
+from fms.utils.checkpointing import Checkpointer
 from torch import distributed as dist
 from torch.distributed._tensor import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
@@ -174,13 +175,27 @@ def main(**kwargs):
     if cfg.use_torch_compile:
         print("compile not supported yet for llama")
 
+    # Optimizer
     optimizer = optim.AdamW(model.parameters(), lr=cfg.learning_rate, betas=(.9,.95), weight_decay=0.1)
+
+    # Load from checkpoint
+    start_step = 0
+    tokens_seen = 0
+    checkpointer = Checkpointer(cfg.model_name, 1000, cfg.sharding_strategy, rank, local_rank)
+    model, optimizer, train_loader, start_step, tokens_seen = checkpointer.load(
+        model,
+        optimizer,
+        train_loader,
+        path=cfg.model_name,
+    )
+
+    # LR schedule
     warmup_interval = min(2000, cfg.num_steps//20)
     schedule = lambda x: min(
         1 - (1 - min(x, warmup_interval) / warmup_interval) ** 2,  # parabolic anneal
         0.1 + 0.5 * (1 - 0.1) * (1 + math.cos(min(x, cfg.num_steps) / cfg.num_steps * math.pi)),
     )
-    scheduler = LambdaLR(optimizer, schedule)
+    scheduler = LambdaLR(optimizer, lambda x: schedule(x + start_step))
     profiler = get_profiler(cfg)
 
     if rank == 0:
@@ -195,6 +210,9 @@ def main(**kwargs):
         optimizer,
         scheduler,
         profiler,
+        checkpointer,
+        start_step,
+        tokens_seen,
     )
 
     dist.barrier()
