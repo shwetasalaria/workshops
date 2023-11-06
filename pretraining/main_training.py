@@ -70,7 +70,7 @@ def main(**kwargs):
         print("rank:", rank, "hf model loaded.", "time:", t2 - t1)
 
     # get fms model
-    model = llama.convert_hf_llama(model)
+    model = llama.convert_hf_llama(model, config.from_scratch, config.orig_init)
     if rank == 0:
         t3 = time.time()
         print("rank:", rank, "fms model converted.", "time:", t3 - t2)
