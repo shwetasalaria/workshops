@@ -180,12 +180,11 @@ def main(**kwargs):
 
     # Load from checkpoint
     start_step = 0
-    checkpointer = Checkpointer(cfg.model_name, 1000, cfg.sharding_strategy, rank, local_rank)
+    checkpointer = Checkpointer(cfg.save_path, 1000, cfg.sharding_strategy, rank, local_rank)
     model, optimizer, train_loader, start_step, tokens_seen = checkpointer.load(
         model,
         optimizer,
         train_loader,
-        path=cfg.model_name,
     )
 
     # LR schedule
