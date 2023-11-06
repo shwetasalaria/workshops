@@ -10,6 +10,7 @@ class train_config:
 
     # model
     model_name: str = "/lustre/llama_weights/hf/7B"
+    save_path: str = "/lustre/ckpt_path/"
     tokenizer: str = "/lustre/llama_weights/tokenizer.model"
     from_scratch: bool = True
     orig_init: bool = True
