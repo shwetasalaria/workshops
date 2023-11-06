@@ -11,6 +11,8 @@ class train_config:
     # model
     model_name: str = "/lustre/llama_weights/hf/7B"
     tokenizer: str = "/lustre/llama_weights/tokenizer.model"
+    from_scratch: bool = True
+    orig_init: bool = True
 
     # data and dataloader
     data_path: str = "/lustre/bluepile-processing/rel0_5/tokens_llama2/lang=en/"
