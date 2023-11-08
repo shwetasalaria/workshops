@@ -7,6 +7,7 @@ import torch
 import torch.optim as optim
 from fms.models import llama
 from fms.datasets import dataset as fmdata
+from fms.models.llama import LLaMAConfig, LLaMA
 from fms.utils.checkpointing import Checkpointer
 from torch import distributed as dist
 from torch.distributed._tensor import init_device_mesh
@@ -18,7 +19,6 @@ from torch.distributed.tensor.parallel import (
 )
 from torch.distributed.tensor.parallel.fsdp import enable_2d_with_fsdp
 from torch.optim.lr_scheduler import LambdaLR
-from transformers import LlamaForCausalLM, LlamaConfig
 
 import config
 import policies
@@ -53,32 +53,30 @@ def main(**kwargs):
     # get policy
     mixed_precision_policy, wrapping_policy, sharding_strategy_policy = get_policies(cfg, rank)
 
-    # get hf model
-    if rank == 0:
-        t1 = time.time()
+    # get fms model
+    llama_config = LLaMAConfig(
+        src_vocab_size=32000,
+        emb_dim=4096,
+        norm_eps=1e-05,
+        nheads=32,
+        nlayers=32,
+        hidden_grow_factor=11008/4096,
+        multiple_of=1,
+        activation_fn="silu",
+        max_expected_seq_len=2048,
+    )
     if cfg.low_cpu_fsdp:
         if rank == 0:
-            model = LlamaForCausalLM.from_pretrained(cfg.model_name, low_cpu_mem_usage=True)
+            model = LLaMA(llama_config, orig_init=True)
         else:
-            llama_config = LlamaConfig.from_pretrained(cfg.model_name)
             with torch.device("meta"):
-                model = LlamaForCausalLM(llama_config)
+                model = LLaMA(llama_config, orig_init=True)
     else:
-        model = LlamaForCausalLM.from_pretrained(cfg.model_name)
-    if rank == 0:
-        t2 = time.time()
-        print("rank:", rank, "hf model loaded.", "time:", t2 - t1)
-
-    # get fms model
-    model = llama.convert_hf_llama(model, cfg.from_scratch, cfg.orig_init)
-    if rank == 0:
-        t3 = time.time()
-        print("rank:", rank, "fms model converted.", "time:", t3 - t2)
+        model = LLaMA(llama_config, orig_init=True)
 
     if rank == 0:
-        print(f"--> Training for {cfg.model_name}")
         total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"\n--> {cfg.model_name} has {total_params / 1e6} Million params\n")
+        print(f"\n--> model has {total_params / 1e6} Million params\n")
 
     # get data loader
     datasets, weights = parse_data_args(cfg.datasets, cfg.weights)
@@ -173,7 +171,7 @@ def main(**kwargs):
         policies.apply_fsdp_checkpointing(model, cfg.selective_checkpointing)
 
     if cfg.use_torch_compile:
-        print("compile not supported yet for llama")
+        print("compile not supported yet for llama ")
 
     # Optimizer
     optimizer = optim.AdamW(model.parameters(), lr=cfg.learning_rate, betas=(.9,.95), weight_decay=0.1)
