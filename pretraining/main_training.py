@@ -21,7 +21,7 @@ import config
 import policies
 from pretraining.utils.config_utils import update_config
 from pretraining.utils.dataset_utils import get_data_loader
-from pretraining.utils.train_utils import setup, setup_environ_flags, get_policies, train, get_profiler, parse_data_args
+from pretraining.utils.train_utils import setup, setup_environ_flags, get_policies, train, get_profiler
 
 
 def main(**kwargs):
