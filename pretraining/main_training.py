@@ -1,12 +1,9 @@
 import math
 import os
-import time
 
 import fire
 import torch
 import torch.optim as optim
-from fms.models import llama
-from fms.datasets import dataset as fmdata
 from fms.models.llama import LLaMAConfig, LLaMA
 from fms.utils.checkpointing import Checkpointer
 from torch import distributed as dist
@@ -23,7 +20,7 @@ from torch.optim.lr_scheduler import LambdaLR
 import config
 import policies
 from pretraining.utils.config_utils import update_config
-from pretraining.utils.dataset_utils import get_train_loader
+from pretraining.utils.dataset_utils import get_data_loader
 from pretraining.utils.train_utils import setup, setup_environ_flags, get_policies, train, get_profiler, parse_data_args
 
 
@@ -79,46 +76,10 @@ def main(**kwargs):
         print(f"\n--> model has {total_params / 1e6} Million params\n")
 
     # get data loader
-    datasets, weights = parse_data_args(cfg.datasets, cfg.weights)
-    def causal_lm(data_seq, prompt_len=1):
-        """
-        Perform causal language modeling by right-shifting the input sequence.
-        Sets first prompt_len tokens to be ignored by the loss. Assumes inputs start with BOS.
-        """
-        data_seq = torch.IntTensor(data_seq)
-        t = data_seq.clone()[1:]
-        data_seq = data_seq[:-1]
-        t[:prompt_len] = -100
-        return data_seq, t
-    base_scalable = fmdata.Scalable_Sampling_Dataset
-    data = base_scalable(
-        cfg.data_path,
-        fmdata.Streaming_Doc_Dataset,
-        rank,
-        world_size,
-        cfg.sep_token,
-        trainsplit=1,
-        is_val=False,
-        min_length=3,
-        datasets=datasets,
-        weights=weights,
-        seed=cfg.seed,
-        verbose=(rank == 0),
-        n_logical_shards=cfg.logical_shards,
-    )
-    data = fmdata.Buffer_Dataset(
-        data,
-        [cfg.seq_length + 1],
-        bos_token=cfg.sep_token,
-        pack_hard=True,
-    )
-    data = fmdata.Preload_Buffer_Dataset(data, 10000)
-    data = fmdata.Preprocess_Dataset(data, causal_lm)
-
-    if rank==0:
+    if rank == 0:
         print("Constructing datasets...")
-    train_loader = iter(torch.utils.data.DataLoader(data, num_workers=0, batch_size=cfg.batch_size))
-    if rank==0:
+    train_loader = get_data_loader(cfg, rank, world_size)
+    if rank == 0:
         print("Datasets constructed!")
 
     # TP
@@ -192,11 +153,13 @@ def main(**kwargs):
         0.1 + 0.5 * (1 - 0.1) * (1 + math.cos(min(x, cfg.num_steps) / cfg.num_steps * math.pi)),
     )
     scheduler = LambdaLR(optimizer, lambda x: schedule(x + start_step))
+
+    # profiler
     profiler = get_profiler(cfg)
 
+    # Train
     if rank == 0:
         print(f"Training for {cfg.num_steps} steps")
-
     train(
         cfg,
         model,
