@@ -137,13 +137,14 @@ def main(**kwargs):
     # Optimizer
     optimizer = optim.AdamW(model.parameters(), lr=cfg.learning_rate, betas=(.9,.95), weight_decay=0.1)
 
-    # Load from checkpoint
+    # optionally load from checkpoint
     start_step = 0
-    checkpointer = Checkpointer(cfg.save_path, 1000, cfg.sharding_strategy, rank, local_rank)
+    checkpointer = Checkpointer(cfg.ckpt_save_path, 1000, cfg.sharding_strategy, rank, local_rank)
     model, optimizer, train_loader, start_step, tokens_seen = checkpointer.load(
         model,
         optimizer,
         train_loader,
+        path=cfg.ckpt_load_path
     )
 
     # LR schedule
