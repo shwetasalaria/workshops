@@ -1,6 +1,8 @@
 import os
 import time
 
+from datetime import datetime
+
 import torch.cuda.nccl as nccl
 import torch.distributed as dist
 
@@ -70,7 +72,7 @@ def train(
 
 
 def setup():
-    dist.init_process_group("nccl")
+    dist.init_process_group(backend="nccl",timeout=datetime.timedelta(seconds=5400))
 
 
 def setup_environ_flags():
