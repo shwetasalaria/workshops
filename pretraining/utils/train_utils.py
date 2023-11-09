@@ -25,6 +25,7 @@ def train(
     profiler,
     checkpointer,
     start_step,
+    n_tok,
 ):
     model.train()
     ddp_loss = torch.zeros(2).to(local_rank)
@@ -59,6 +60,7 @@ def train(
             elapsed_tokens = (batch_idx - start_step) * world_size * cfg.batch_size * cfg.seq_length // cfg.tp_size
             if rank == 0:
                 print("step:", batch_idx)
+                print("tokens seen:", n_tok + elapsed_tokens)
                 print("loss:", train_accuracy)
                 print(f"speed for these {cfg.report_interval} steps:", (time.time() - start) / cfg.report_interval)
                 print("overall speed:", elapsed_time / (batch_idx - start_step))
@@ -76,6 +78,7 @@ def train(
                 model,
                 optimizer,
                 train_loader,
+                tokens_seen = elapsed_tokens + n_tok
             )
 
     return train_accuracy
