@@ -5,6 +5,24 @@ from fms.utils import tokenizers
 from fms.datasets import instructions
 from fms.datasets import dataset as fmdata
 
+def get_dummy_loader(cfg, rank, world_size):
+    class SteadyCounter(torch.utils.data.IterableDataset):
+        # Spit out incremental counts of constant length l, modulo vocab size v
+        def __init__(self, l, v):
+            self.i = 0
+            self.rank = 0
+            self.worldsize = 1
+            self.l = l
+            self.v = v
+    
+        def __iter__(self):
+            while True:
+                yield torch.IntTensor([x%self.v for x in range(self.i, self.i + self.l)])
+                self.i += self.l
+
+    data = SteadyCounter(cfg.seq_length, 10000) # 10k vsize since vsize isn't actually in the cfg
+    return torch.utils.data.DataLoader(data, batch_size=cfg.batch_size)
+
 def get_train_loader(cfg, rank, world_size):
 
     tokenizer = tokenizers.get_tokenizer(cfg.tokenizer)
