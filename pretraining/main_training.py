@@ -172,6 +172,7 @@ def main(**kwargs):
         profiler,
         checkpointer,
         start_step,
+        tokens_seen,
     )
 
     dist.barrier()
